@@ -18,6 +18,7 @@ from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, Resea
 from .offline_data import OFFLINE_PAPERS
 from .planner import plan_queries, topic_terms
 from .report import render_report
+from .tools import ArxivSearchError, search_arxiv
 
 
 def slugify(value: str, max_length: int = 48) -> str:
@@ -47,6 +48,47 @@ def search_offline(topic: str, limit: int = 20) -> list[PaperRecord]:
         scored.append(clone)
     scored.sort(key=lambda item: (item.score, item.year, item.citation_count), reverse=True)
     return scored[:limit]
+
+
+def dedupe_papers(papers: list[PaperRecord]) -> list[PaperRecord]:
+    seen: set[str] = set()
+    unique: list[PaperRecord] = []
+    for paper in papers:
+        key = paper.paper_id or paper.url or paper.title.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(paper)
+    return unique
+
+
+def search_source(
+    topic: str,
+    query_plan: list[Any],
+    source: str,
+    limit: int,
+) -> tuple[list[PaperRecord], str, str | None]:
+    """Search papers from the requested source with offline fallback."""
+
+    if source == "offline":
+        return search_offline(topic, limit=limit), "offline", None
+
+    if source == "arxiv":
+        collected: list[PaperRecord] = []
+        errors: list[str] = []
+        for query in query_plan[:3]:
+            try:
+                collected.extend(search_arxiv(query.query_text, limit=limit))
+            except ArxivSearchError as exc:
+                errors.append(str(exc))
+        unique = dedupe_papers(collected)
+        if unique:
+            return unique[:limit], "arxiv", None
+        fallback_reason = "; ".join(errors) or "arXiv returned no papers."
+        return search_offline(topic, limit=limit), "offline", fallback_reason
+
+    fallback_reason = f"Source '{source}' is not implemented; offline fallback used."
+    return search_offline(topic, limit=limit), "offline", fallback_reason
 
 
 def rank_papers(papers: list[PaperRecord], topic: str, top_k: int) -> list[PaperRecord]:
@@ -185,14 +227,15 @@ def run_research(
         raise ValueError("top_k must be greater than 0.")
 
     task_id = make_task_id(topic)
-    query_plan = plan_queries(topic, source="offline" if offline else source)
+    requested_source = "offline" if offline else source
+    query_plan = plan_queries(topic, source=requested_source)
 
-    if not offline and source != "offline":
-        raise NotImplementedError(
-            "MVP currently supports offline mode. API-backed tools are planned next."
-        )
-
-    searched_papers = search_offline(topic)
+    searched_papers, actual_source, fallback_reason = search_source(
+        topic=topic,
+        query_plan=query_plan,
+        source=requested_source,
+        limit=max(top_k * 4, 10),
+    )
     selected_papers = rank_papers(searched_papers, topic, top_k=top_k)
     evidence_items = extract_evidence(selected_papers)
     claims = synthesize_claims(topic, evidence_items)
@@ -217,7 +260,9 @@ def run_research(
         "selected_paper_count": len(selected_papers),
         "evidence_count": len(evidence_items),
         "citation_check_pass_rate": round(passed_checks / max(len(citation_checks), 1), 3),
-        "mode": "offline",
+        "requested_source": requested_source,
+        "actual_source": actual_source,
+        "fallback_reason": fallback_reason or "",
     }
 
     trace_path: Path | None = None

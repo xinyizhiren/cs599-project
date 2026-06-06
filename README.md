@@ -81,18 +81,26 @@ SEMANTIC_SCHOLAR_API_KEY=optional_semantic_scholar_api_key
 
 MVP 阶段允许只使用公开论文 API 和离线样例数据运行基础流程。
 
-### 4. 运行 Demo
+### 4. 运行离线 Demo
 
 ```powershell
-python -m researchflow run "Agentic RAG for enterprise knowledge management" --top-k 5 --output examples/reports/agentic_rag.md
+python -m researchflow run "Agentic RAG for enterprise knowledge management" --source offline --top-k 5 --output examples/reports/agentic_rag.md
 ```
 
-当前代码仍在开发中，以上命令会在 MVP 阶段完成。
+离线模式使用内置样例论文，适合课堂 Demo 和断网兜底。
+
+### 5. 运行 arXiv 检索
+
+```powershell
+python -m researchflow run "large language model agents" --source arxiv --top-k 5 --output examples/reports/llm_agents.md
+```
+
+如果 arXiv 请求失败，系统会自动降级到离线样例，并在 metrics 中记录 fallback 原因。
 
 ## 项目状态
 
 - [x] Proposal
-- [ ] SDD Specs
+- [x] SDD Specs
 - [ ] MVP
 - [ ] Evaluation
 - [ ] Final Report
@@ -105,6 +113,7 @@ python -m researchflow run "Agentic RAG for enterprise knowledge management" --t
 - [x] 包含 `src/` 目录
 - [x] 包含 README
 - [x] 包含 `.gitignore`
+- [x] 包含 Product / Architecture / API Spec 初稿
 - [ ] `docs/CS599_大作业报告.pdf`
 - [ ] MVP tag: `v0.1`
 

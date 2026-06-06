@@ -43,6 +43,3 @@ data/runtime/
 examples/reports/
 logs/
 tmp/
-
-# Generated reports
-docs/CS599_大作业报告.pdf

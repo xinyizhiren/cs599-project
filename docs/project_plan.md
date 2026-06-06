@@ -56,18 +56,21 @@ MVP 阶段暂不追求大规模全文阅读，不做复杂 Web UI，不做多领
 
 ### 2026-06-06：SDD 规格设计
 
-- [ ] 编写 `docs/product_spec.md`
-- [ ] 编写 `docs/architecture_spec.md`
-- [ ] 编写 `docs/api_spec.md`
-- [ ] 明确系统输入输出格式
-- [ ] 明确 ResearchGraph 状态字段
-- [ ] 明确每个 Agent 节点的职责、输入、输出和失败处理方式
+- [x] 编写 `docs/product_spec.md`
+- [x] 编写 `docs/architecture_spec.md`
+- [x] 编写 `docs/api_spec.md`
+- [x] 明确系统输入输出格式
+- [x] 明确 ResearchGraph 状态字段
+- [x] 明确每个 Agent 节点的职责、输入、输出和失败处理方式
+- [x] 实现 arXiv API 工具层与 XML 解析器
+- [x] 将 source 路由接入 pipeline，并保留离线降级
 
 交付物：
 
 - Product Spec：用户画像、核心场景、功能边界、验收标准
 - Architecture Spec：系统分层、Agent 协作、状态流、数据流
 - API Spec：CLI/API 参数、工具接口、报告数据结构
+- arXiv Tool：真实论文检索工具初版
 
 ### 2026-06-07：核心闭环实现
 
