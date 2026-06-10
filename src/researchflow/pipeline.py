@@ -15,6 +15,7 @@ from typing import Any
 
 from .evaluation import evaluate_state, render_evaluation_markdown
 from .graph import NodeSpec, run_research_graph
+from .llm import LLMError, build_llm_client
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, ResearchResult
 from .offline_data import OFFLINE_PAPERS
 from .planner import plan_queries, topic_terms
@@ -140,6 +141,107 @@ def extract_evidence(papers: list[PaperRecord]) -> list[EvidenceItem]:
             ]
         )
     return evidence_items
+
+
+def _clamp_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.65
+    return max(0.0, min(1.0, confidence))
+
+
+def extract_evidence_with_llm(papers: list[PaperRecord], provider: str) -> list[EvidenceItem]:
+    client = build_llm_client(provider)
+    paper_payload = [
+        {
+            "paper_id": paper.paper_id,
+            "title": paper.title,
+            "authors": paper.authors,
+            "year": paper.year,
+            "abstract": paper.abstract,
+        }
+        for paper in papers
+    ]
+    system_prompt = (
+        "You extract evidence for a literature review agent. Return only a JSON object "
+        "with key evidence_items. Each item must use a paper_id from the input and include "
+        "category, claim, support_text, and confidence. Use categories contribution, method, "
+        "experiment, limitation, or future_work. Do not invent papers or references."
+    )
+    payload = client.generate_json(system_prompt, {"papers": paper_payload})
+    raw_items = payload.get("evidence_items")
+    if not isinstance(raw_items, list):
+        raise LLMError("LLM JSON missing evidence_items list.")
+
+    allowed_papers = {paper.paper_id for paper in papers}
+    evidence_items: list[EvidenceItem] = []
+    counters: dict[str, int] = {}
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        paper_id = str(raw.get("paper_id", ""))
+        if paper_id not in allowed_papers:
+            continue
+        category = str(raw.get("category", "contribution")).strip() or "contribution"
+        claim = str(raw.get("claim", "")).strip()
+        support_text = str(raw.get("support_text", "")).strip()
+        if not claim or not support_text:
+            continue
+        counters[paper_id] = counters.get(paper_id, 0) + 1
+        evidence_items.append(
+            EvidenceItem(
+                evidence_id=f"llm-{slugify(paper_id, 18)}-{counters[paper_id]}",
+                paper_id=paper_id,
+                category=category,
+                claim=claim,
+                support_text=support_text,
+                confidence=_clamp_confidence(raw.get("confidence", 0.72)),
+            )
+        )
+
+    if not evidence_items:
+        raise LLMError("LLM did not produce usable evidence items.")
+    return evidence_items
+
+
+def polish_background_with_llm(
+    topic: str,
+    report_markdown: str,
+    selected_papers: list[PaperRecord],
+    provider: str,
+) -> str:
+    client = build_llm_client(provider)
+    system_prompt = (
+        "You polish only the Research Background paragraph for a literature review report. "
+        "Return a JSON object with key research_background. Do not add citations, URLs, "
+        "paper IDs, evidence IDs, or references. Keep it concise and factual."
+    )
+    payload = client.generate_json(
+        system_prompt,
+        {
+            "topic": topic,
+            "selected_papers": [
+                {"title": paper.title, "year": paper.year, "abstract": paper.abstract}
+                for paper in selected_papers
+            ],
+        },
+    )
+    paragraph = str(payload.get("research_background", "")).strip()
+    if not paragraph:
+        raise LLMError("LLM did not return research_background.")
+    if "http" in paragraph or "[P" in paragraph or "evidence_id" in paragraph:
+        raise LLMError("LLM background attempted to add citations or evidence IDs.")
+
+    start_marker = "## 1. Research Background\n\n"
+    end_marker = "\n\n## 2. Core Papers"
+    start = report_markdown.find(start_marker)
+    end = report_markdown.find(end_marker)
+    if start == -1 or end == -1 or end <= start:
+        raise LLMError("Report structure does not support background polish.")
+    prefix = report_markdown[: start + len(start_marker)]
+    suffix = report_markdown[end:]
+    return f"{prefix}{paragraph}{suffix}"
 
 
 def synthesize_claims(topic: str, evidence_items: list[EvidenceItem]) -> list[ClaimRecord]:
@@ -284,7 +386,28 @@ def node_rank_papers(state: ResearchState) -> dict[str, Any]:
 
 
 def node_extract_evidence(state: ResearchState) -> dict[str, Any]:
-    return {"evidence_items": extract_evidence(state["selected_papers"])}
+    provider = state.get("llm_provider", "off")
+    if provider == "deepseek":
+        try:
+            return {
+                "evidence_items": extract_evidence_with_llm(
+                    state["selected_papers"],
+                    provider=provider,
+                ),
+                "llm_used": True,
+                "llm_fallback_reason": "",
+            }
+        except LLMError as exc:
+            return {
+                "evidence_items": extract_evidence(state["selected_papers"]),
+                "llm_used": False,
+                "llm_fallback_reason": str(exc),
+            }
+    return {
+        "evidence_items": extract_evidence(state["selected_papers"]),
+        "llm_used": False,
+        "llm_fallback_reason": "LLM provider is disabled.",
+    }
 
 
 def node_synthesize_claims(state: ResearchState) -> dict[str, Any]:
@@ -303,11 +426,32 @@ def node_write_report(state: ResearchState) -> dict[str, Any]:
         claims=state["claims"],
         citation_checks=state["citation_checks"],
     )
+    llm_used = bool(state.get("llm_used", False))
+    llm_fallback_reason = state.get("llm_fallback_reason", "")
+    if state.get("llm_provider") == "deepseek":
+        try:
+            report_markdown = polish_background_with_llm(
+                state["topic"],
+                report_markdown,
+                state["selected_papers"],
+                provider="deepseek",
+            )
+            llm_used = True
+        except LLMError as exc:
+            reason = f"Report polish fallback: {exc}"
+            llm_fallback_reason = (
+                f"{llm_fallback_reason}; {reason}" if llm_fallback_reason else reason
+            )
     output_path = state.get("output_path")
     report_path = Path(output_path) if output_path else Path("examples/reports") / f"{slugify(state['topic'])}.md"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report_markdown, encoding="utf-8")
-    return {"report_markdown": report_markdown, "report_path": str(report_path)}
+    return {
+        "report_markdown": report_markdown,
+        "report_path": str(report_path),
+        "llm_used": llm_used,
+        "llm_fallback_reason": llm_fallback_reason,
+    }
 
 
 def node_evaluate_result(state: ResearchState) -> dict[str, Any]:
@@ -333,6 +477,7 @@ def run_research(
     output: str | None = None,
     offline: bool = False,
     write_trace: bool = True,
+    llm: str = "off",
 ) -> ResearchResult:
     if not topic.strip():
         raise ValueError("Research topic cannot be empty.")
@@ -348,6 +493,9 @@ def run_research(
         "requested_source": requested_source,
         "output_path": output,
         "write_trace": write_trace,
+        "llm_provider": llm,
+        "llm_used": False,
+        "llm_fallback_reason": "",
         "errors": [],
         "node_trace": [],
     }
@@ -402,6 +550,7 @@ def evaluate_benchmark(
             top_k=int(task.get("top_k", 5)),
             source=task.get("source", "offline"),
             offline=bool(task.get("offline", task.get("source", "offline") == "offline")),
+            llm=task.get("llm", "off"),
             write_trace=False,
         )
         result_payload = result.to_dict()

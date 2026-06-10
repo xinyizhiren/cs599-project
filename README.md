@@ -77,6 +77,8 @@ pip install -e ".[dev]"
 DEEPSEEK_API_KEY=your_deepseek_api_key
 OPENAI_API_KEY=your_openai_api_key
 SEMANTIC_SCHOLAR_API_KEY=optional_semantic_scholar_api_key
+RESEARCHFLOW_MODEL=deepseek-v4-flash
+RESEARCHFLOW_LLM_TIMEOUT=30
 ```
 
 MVP 阶段允许只使用公开论文 API 和离线样例数据运行基础流程。
@@ -97,7 +99,16 @@ python -m researchflow run "large language model agents" --source arxiv --top-k 
 
 如果 arXiv 请求失败，系统会自动降级到离线样例，并在 metrics 中记录 fallback 原因。
 
-### 6. 运行评估
+### 6. 运行 DeepSeek 增强模式
+
+```powershell
+$env:DEEPSEEK_API_KEY="your_deepseek_api_key"
+python -m researchflow run "Agentic RAG for enterprise knowledge management" --source arxiv --llm deepseek --top-k 5 --output examples/reports/deepseek_agentic_rag.md
+```
+
+DeepSeek 只用于证据抽取和报告背景段落润色。若未配置 Key、网络超时或模型输出无法解析，系统会自动回退到规则实现，并在 metrics 中记录 `llm_fallback_reason`。
+
+### 7. 运行评估
 
 ```powershell
 python -m researchflow evaluate --benchmark examples/benchmarks/basic.jsonl --output examples/evaluation/results.json

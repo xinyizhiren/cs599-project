@@ -25,6 +25,7 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
 | --offline | bool | 否 | false | 是否使用离线样例数据 |
 | --trace | bool | 否 | true | 是否保存 trace |
+| --llm | string | 否 | off | 可选 LLM，支持 off 和 deepseek |
 
 输出：
 
@@ -74,6 +75,7 @@ python -m researchflow version
 | OPENAI_API_KEY | 否 | OpenAI API Key |
 | SEMANTIC_SCHOLAR_API_KEY | 否 | Semantic Scholar API Key，可提高限额 |
 | RESEARCHFLOW_MODEL | 否 | 默认模型名称 |
+| RESEARCHFLOW_LLM_TIMEOUT | 否 | LLM 请求超时时间，默认 30 秒 |
 | RESEARCHFLOW_CACHE_DIR | 否 | 缓存目录 |
 
 规则：
@@ -93,6 +95,7 @@ def run_research(
     source: str = "offline",
     output: str | None = None,
     offline: bool = False,
+    llm: str = "off",
 ) -> ResearchResult:
     ...
 ```
@@ -320,6 +323,9 @@ def write_report(
 | report_section_completeness | 报告章节完整率 |
 | node_trace_count | Agent 节点 trace 数量 |
 | graph_runtime | langgraph / sequential / sequential_fallback |
+| llm_provider | off / deepseek |
+| llm_used | 是否实际使用 LLM 输出 |
+| llm_fallback_reason | LLM 降级原因 |
 
 ## 9. 兼容性计划
 

@@ -16,6 +16,9 @@ class ResearchState(TypedDict, total=False):
     fallback_reason: str
     output_path: str | None
     write_trace: bool
+    llm_provider: str
+    llm_used: bool
+    llm_fallback_reason: str
     query_plan: list[QueryItem]
     searched_papers: list[PaperRecord]
     selected_papers: list[PaperRecord]

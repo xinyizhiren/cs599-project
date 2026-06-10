@@ -136,6 +136,9 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "requested_source": state.get("requested_source", ""),
         "actual_source": state.get("actual_source", ""),
         "fallback_reason": state.get("fallback_reason", ""),
+        "llm_provider": state.get("llm_provider", "off"),
+        "llm_used": bool(state.get("llm_used", False)),
+        "llm_fallback_reason": state.get("llm_fallback_reason", ""),
         "graph_runtime": state.get("graph_runtime", ""),
         "dimension_scores": {
             "task_completion": _round(task_completion_score),

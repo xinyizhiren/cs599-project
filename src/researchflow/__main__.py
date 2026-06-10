@@ -26,6 +26,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--output", default=None, help="Markdown report output path.")
     run_parser.add_argument("--offline", action="store_true", help="Force offline fixture mode.")
     run_parser.add_argument("--trace", action="store_true", default=True, help="Write trace JSON.")
+    run_parser.add_argument(
+        "--llm",
+        default="off",
+        choices=["off", "deepseek"],
+        help="Optional LLM provider for evidence extraction. Defaults to off.",
+    )
 
     eval_parser = subparsers.add_parser("evaluate", help="Run benchmark tasks.")
     eval_parser.add_argument("--benchmark", required=True, help="JSONL benchmark file.")
@@ -55,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output,
             offline=args.offline or args.source == "offline",
             write_trace=args.trace,
+            llm=args.llm,
         )
         print(f"Task ID: {result.task_id}")
         print(f"Status: {result.status}")
