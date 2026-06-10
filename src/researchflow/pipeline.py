@@ -29,6 +29,101 @@ from .tools import (
 )
 
 
+RAG_TOPIC_PATTERNS = (
+    "retrieval augmented generation",
+    "retrieval-augmented generation",
+    "rag",
+)
+RAG_TITLE_SIGNALS = (
+    "survey",
+    "review",
+    "benchmark",
+    "evaluation",
+    "security",
+    "secure",
+    "threat",
+    "defense",
+    "taxonomy",
+    "graphrag",
+    "causalrag",
+    "trustworthy",
+    "robust",
+)
+RAG_SYSTEM_SIGNALS = (
+    "retriever",
+    "retrieval",
+    "embedding",
+    "vector",
+    "knowledge base",
+    "grounding",
+    "hallucination",
+    "context",
+    "chunk",
+    "rerank",
+    "index",
+)
+RAG_DOMAIN_APP_SIGNALS = (
+    "food",
+    "nutrition",
+    "milky way",
+    "globular",
+    "novice math",
+    "bachelor project",
+)
+RAG_LENS_DIMENSIONS: dict[str, tuple[str, ...]] = {
+    "Survey & Taxonomy": ("survey", "review", "taxonomy", "sok", "systematic"),
+    "Retrieval & Indexing": (
+        "retrieval",
+        "retriever",
+        "embedding",
+        "vector",
+        "index",
+        "search",
+        "knowledge base",
+        "corpus",
+    ),
+    "Generation & Grounding": (
+        "generation",
+        "grounded",
+        "grounding",
+        "context",
+        "hallucination",
+        "faithfulness",
+        "answer",
+    ),
+    "Evaluation & Benchmarks": ("evaluation", "benchmark", "metric", "dataset", "test"),
+    "Security & Robustness": (
+        "security",
+        "secure",
+        "attack",
+        "threat",
+        "poisoning",
+        "adversarial",
+        "privacy",
+        "defense",
+        "robust",
+    ),
+    "Graph & Structured RAG": (
+        "graph",
+        "graphrag",
+        "causalrag",
+        "knowledge graph",
+        "hypergraph",
+        "structured",
+    ),
+    "Domain Applications": (
+        "recommendation",
+        "assistant",
+        "education",
+        "health",
+        "nutrition",
+        "science",
+        "domain",
+        "application",
+    ),
+}
+
+
 def slugify(value: str, max_length: int = 48) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
     return (slug[:max_length].strip("-") or "research-task")
@@ -39,19 +134,49 @@ def make_task_id(topic: str) -> str:
     return f"{stamp}-{slugify(topic, 32)}"
 
 
-def score_paper(paper: PaperRecord, terms: list[str]) -> float:
-    haystack = f"{paper.title} {paper.abstract}".lower()
-    term_score = sum(1 for term in terms if term.lower() in haystack)
-    recency_score = max(0, paper.year - 2020) * 0.1
+def is_rag_topic(topic: str) -> bool:
+    normalized = topic.lower()
+    return any(pattern in normalized for pattern in RAG_TOPIC_PATTERNS)
+
+
+def score_paper(paper: PaperRecord, terms: list[str], topic: str = "") -> float:
+    title = paper.title.lower()
+    abstract = paper.abstract.lower()
+    term_score = 0.0
+    for term in terms:
+        clean_term = term.lower()
+        if clean_term in title:
+            term_score += 3.0
+        if clean_term in abstract:
+            term_score += 1.0
+    recency_score = max(0, paper.year - 2020) * 0.08
     citation_score = min(paper.citation_count, 100) / 100
-    return term_score * 2.0 + recency_score + citation_score
+    score = term_score + recency_score + citation_score
+
+    if is_rag_topic(topic):
+        combined = f"{title} {abstract}"
+        if "retrieval-augmented generation" in title or "retrieval augmented generation" in title:
+            score += 8.0
+        elif "retrieval-augmented generation" in abstract or "retrieval augmented generation" in abstract:
+            score += 3.0
+        if re.search(r"\brag\b", title):
+            score += 6.0
+        elif re.search(r"\brag\b", abstract):
+            score += 2.0
+        score += sum(2.0 for signal in RAG_TITLE_SIGNALS if signal in title)
+        score += min(4.0, sum(0.5 for signal in RAG_SYSTEM_SIGNALS if signal in combined))
+        if any(signal in title for signal in RAG_DOMAIN_APP_SIGNALS) and not any(
+            signal in title for signal in RAG_TITLE_SIGNALS
+        ):
+            score -= 3.0
+    return max(0.0, score)
 
 
 def search_offline(topic: str, limit: int = 20) -> list[PaperRecord]:
     terms = topic_terms(topic)
     scored = []
     for paper in OFFLINE_PAPERS:
-        score = score_paper(paper, terms)
+        score = score_paper(paper, terms, topic=topic)
         clone = PaperRecord(**{**paper.to_dict(), "score": score})
         scored.append(clone)
     scored.sort(key=lambda item: (item.score, item.year, item.citation_count), reverse=True)
@@ -146,17 +271,64 @@ def rank_papers(papers: list[PaperRecord], topic: str, top_k: int) -> list[Paper
     ranked: list[PaperRecord] = []
     for paper in sorted(
         papers,
-        key=lambda item: (score_paper(item, terms), item.year, item.citation_count),
+        key=lambda item: (score_paper(item, terms, topic=topic), item.year, item.citation_count),
         reverse=True,
     ):
         if paper.paper_id in seen:
             continue
         seen.add(paper.paper_id)
-        paper.score = score_paper(paper, terms)
+        paper.score = score_paper(paper, terms, topic=topic)
         ranked.append(paper)
         if len(ranked) >= top_k:
             break
     return ranked
+
+
+def classify_lens_dimensions(paper: PaperRecord) -> list[str]:
+    haystack = f"{paper.title} {paper.abstract}".lower()
+    dimensions = [
+        dimension
+        for dimension, keywords in RAG_LENS_DIMENSIONS.items()
+        if any(keyword in haystack for keyword in keywords)
+    ]
+    return dimensions or ["Unclassified"]
+
+
+def build_research_lens(topic: str, papers: list[PaperRecord]) -> dict[str, Any]:
+    if not is_rag_topic(topic):
+        return {}
+
+    paper_profiles = [
+        {
+            "paper_id": paper.paper_id,
+            "title": paper.title,
+            "dimensions": classify_lens_dimensions(paper),
+        }
+        for paper in papers
+    ]
+    dimension_counts: dict[str, int] = {}
+    for profile in paper_profiles:
+        for dimension in profile["dimensions"]:
+            if dimension == "Unclassified":
+                continue
+            dimension_counts[dimension] = dimension_counts.get(dimension, 0) + 1
+
+    expected_dimensions = list(RAG_LENS_DIMENSIONS)
+    missing_dimensions = [
+        dimension for dimension in expected_dimensions if dimension not in dimension_counts
+    ]
+    coverage = len(dimension_counts) / max(len(expected_dimensions), 1)
+    return {
+        "lens_name": "RAG Research Lens",
+        "description": (
+            "A domain-aware lens that checks whether selected RAG papers cover survey, "
+            "retrieval, grounding, evaluation, security, structured RAG, and applications."
+        ),
+        "dimension_counts": dimension_counts,
+        "coverage": round(coverage, 3),
+        "missing_dimensions": missing_dimensions,
+        "paper_profiles": paper_profiles,
+    }
 
 
 def extract_evidence(papers: list[PaperRecord]) -> list[EvidenceItem]:
@@ -430,12 +602,14 @@ def node_search_papers(state: ResearchState) -> dict[str, Any]:
 
 
 def node_rank_papers(state: ResearchState) -> dict[str, Any]:
+    selected_papers = rank_papers(
+        state["searched_papers"],
+        state["topic"],
+        top_k=int(state["top_k"]),
+    )
     return {
-        "selected_papers": rank_papers(
-            state["searched_papers"],
-            state["topic"],
-            top_k=int(state["top_k"]),
-        )
+        "selected_papers": selected_papers,
+        "research_lens": build_research_lens(state["topic"], selected_papers),
     }
 
 
@@ -484,6 +658,7 @@ def node_write_report(state: ResearchState) -> dict[str, Any]:
         fallback_reason=state.get("fallback_reason", ""),
         llm_provider=state.get("llm_provider", "off"),
         llm_used=bool(state.get("llm_used", False)),
+        research_lens=state.get("research_lens", {}),
     )
     llm_used = bool(state.get("llm_used", False))
     llm_fallback_reason = state.get("llm_fallback_reason", "")
@@ -596,6 +771,7 @@ def run_research(
                 "query_plan": _serialize(final_state.get("query_plan", [])),
                 "searched_papers": _serialize(final_state.get("searched_papers", [])),
                 "selected_papers": _serialize(final_state.get("selected_papers", [])),
+                "research_lens": _serialize(final_state.get("research_lens", {})),
                 "evidence_items": _serialize(final_state.get("evidence_items", [])),
                 "claims": _serialize(final_state.get("claims", [])),
                 "citation_checks": _serialize(final_state.get("citation_checks", [])),

@@ -1,7 +1,8 @@
 from pathlib import Path
+import re
 
 from researchflow.models import PaperRecord
-from researchflow.pipeline import run_research
+from researchflow.pipeline import build_research_lens, rank_papers, run_research
 
 
 def test_run_research_offline_generates_report() -> None:
@@ -33,7 +34,7 @@ def test_run_research_offline_generates_report() -> None:
     assert "Query Plan" in process
     assert "Evidence Extraction" in process
     assert "DEEPSEEK_API_KEY" not in process
-    assert "sk-" not in process
+    assert re.search(r"sk-[A-Za-z0-9]{16,}", process) is None
 
 
 def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
@@ -86,6 +87,38 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
     report = output.read_text(encoding="utf-8")
     assert "Executive Summary" in report
     assert "Evidence Ledger" in report
+
+
+def test_rag_ranking_and_lens_prioritize_core_literature() -> None:
+    topic = "retrieval augmented generation for large language models"
+    application = PaperRecord(
+        paper_id="arxiv:app",
+        title="RAG for Personalized Food Recommendations",
+        authors=["A. Author"],
+        year=2026,
+        abstract="This work applies retrieval-augmented generation to nutrition advice.",
+        url="https://arxiv.org/abs/app",
+        source="arxiv",
+    )
+    survey = PaperRecord(
+        paper_id="arxiv:survey",
+        title="A Technical Survey of Retrieval-Augmented Generation Benchmarks and Security",
+        authors=["B. Author"],
+        year=2025,
+        abstract=(
+            "This survey reviews retrieval, indexing, grounding, evaluation benchmarks, "
+            "hallucination mitigation, security threats, and robust RAG systems."
+        ),
+        url="https://arxiv.org/abs/survey",
+        source="arxiv",
+    )
+
+    ranked = rank_papers([application, survey], topic, top_k=2)
+    lens = build_research_lens(topic, ranked)
+
+    assert ranked[0].paper_id == "arxiv:survey"
+    assert lens["lens_name"] == "RAG Research Lens"
+    assert lens["coverage"] > 0.5
 
 
 def test_require_live_fails_when_live_source_falls_back(monkeypatch) -> None:

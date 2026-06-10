@@ -24,6 +24,7 @@ class ResearchState(TypedDict, total=False):
     query_plan: list[QueryItem]
     searched_papers: list[PaperRecord]
     selected_papers: list[PaperRecord]
+    research_lens: dict[str, Any]
     evidence_items: list[EvidenceItem]
     claims: list[ClaimRecord]
     citation_checks: list[CitationCheck]

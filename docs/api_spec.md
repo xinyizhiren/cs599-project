@@ -333,6 +333,7 @@ def write_report(
 | llm_provider | off / deepseek |
 | llm_used | 是否实际使用 LLM 输出 |
 | llm_fallback_reason | LLM 降级原因 |
+| research_lens_coverage | RAG Research Lens 维度覆盖率 |
 
 ## 9. 兼容性计划
 

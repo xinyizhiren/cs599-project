@@ -69,6 +69,7 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     report = state.get("report_markdown", "")
     trace = state.get("node_trace", [])
     errors = state.get("errors", [])
+    research_lens = state.get("research_lens", {})
 
     report_generated = bool(state.get("report_path")) and Path(state["report_path"]).exists()
     run_success_rate = 1.0 if report_generated and selected else 0.0
@@ -144,6 +145,7 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "llm_provider": state.get("llm_provider", "off"),
         "llm_used": bool(state.get("llm_used", False)),
         "llm_fallback_reason": state.get("llm_fallback_reason", ""),
+        "research_lens_coverage": _round(float(research_lens.get("coverage", 0.0))),
         "graph_runtime": state.get("graph_runtime", ""),
         "dimension_scores": {
             "task_completion": _round(task_completion_score),

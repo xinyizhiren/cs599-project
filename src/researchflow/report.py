@@ -35,6 +35,7 @@ def render_report(
     fallback_reason: str = "",
     llm_provider: str = "off",
     llm_used: bool = False,
+    research_lens: dict[str, Any] | None = None,
 ) -> str:
     evidence_by_paper: dict[str, list[EvidenceItem]] = defaultdict(list)
     for item in evidence_items:
@@ -134,6 +135,30 @@ def render_report(
     else:
         lines.extend(["No claims were generated.", ""])
 
+    research_lens = research_lens or {}
+    if research_lens:
+        lines.extend(["## RAG Research Lens", ""])
+        lines.append(research_lens.get("description", "Domain-aware research lens."))
+        lines.append("")
+        lines.append(f"- Coverage: {float(research_lens.get('coverage', 0.0)):.3f}")
+        missing_dimensions = research_lens.get("missing_dimensions", [])
+        lines.append(
+            "- Missing dimensions: "
+            + (", ".join(missing_dimensions) if missing_dimensions else "None")
+        )
+        lines.append("")
+        lines.append("| Dimension | Paper Count |")
+        lines.append("| --- | ---: |")
+        for dimension, count in sorted(research_lens.get("dimension_counts", {}).items()):
+            lines.append(f"| {dimension} | {count} |")
+        lines.append("")
+        lines.append("| Paper ID | Lens Dimensions |")
+        lines.append("| --- | --- |")
+        for profile in research_lens.get("paper_profiles", []):
+            dimensions = ", ".join(profile.get("dimensions", []))
+            lines.append(f"| `{profile.get('paper_id', '')}` | {dimensions} |")
+        lines.append("")
+
     lines.extend(["## 4. Method Taxonomy", ""])
     grouped: dict[str, list[EvidenceItem]] = defaultdict(list)
     for item in evidence_items:
@@ -215,6 +240,7 @@ def render_process_markdown(state: dict[str, Any]) -> str:
     claims = state.get("claims", [])
     citation_checks = state.get("citation_checks", [])
     node_trace = state.get("node_trace", [])
+    research_lens = state.get("research_lens", {})
 
     source_counts: dict[str, int] = defaultdict(int)
     for paper in searched_papers:
@@ -268,7 +294,11 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             "",
             "## Top-K Selection",
             "",
-            "Ranking uses topic-term overlap, recency, citation count when available, and duplicate removal.",
+            (
+                "Ranking uses title-weighted topic matching, RAG phrase/acronym signals, "
+                "survey/benchmark/security bonuses, recency, citation count when available, "
+                "and duplicate removal."
+            ),
             "",
             "| Rank | Paper ID | Title | Year | Source | Score | URL |",
             "| ---: | --- | --- | ---: | --- | ---: | --- |",
@@ -290,6 +320,34 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             )
             + " |"
         )
+
+    if research_lens:
+        lines.extend(
+            [
+                "",
+                "## Research Lens",
+                "",
+                research_lens.get("description", "Domain-aware research lens."),
+                "",
+                f"- Lens name: {research_lens.get('lens_name', '')}",
+                f"- Coverage: {float(research_lens.get('coverage', 0.0)):.3f}",
+                "- Missing dimensions: "
+                + (
+                    ", ".join(research_lens.get("missing_dimensions", []))
+                    if research_lens.get("missing_dimensions")
+                    else "None"
+                ),
+                "",
+                "| Dimension | Paper Count |",
+                "| --- | ---: |",
+            ]
+        )
+        for dimension, count in sorted(research_lens.get("dimension_counts", {}).items()):
+            lines.append(f"| {dimension} | {count} |")
+        lines.extend(["", "| Paper ID | Lens Dimensions |", "| --- | --- |"])
+        for profile in research_lens.get("paper_profiles", []):
+            dimensions = ", ".join(profile.get("dimensions", []))
+            lines.append(f"| `{profile.get('paper_id', '')}` | {dimensions} |")
 
     lines.extend(
         [

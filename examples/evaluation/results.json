@@ -5,7 +5,7 @@
   "average_score": 100.0,
   "results": [
     {
-      "task_id": "20260610143902-agentic-rag-for-enterprise-knowl",
+      "task_id": "20260610152112-agentic-rag-for-enterprise-knowl",
       "status": "success",
       "selected_papers": [
         {
@@ -22,7 +22,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 42,
-          "score": 6.92
+          "score": 17.32
         },
         {
           "paper_id": "offline:llm-agents-software-engineering-2024",
@@ -38,39 +38,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 73,
-          "score": 1.13
-        },
-        {
-          "paper_id": "offline:multi-agent-collaboration-2024",
-          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
-          "authors": [
-            "S. Wang",
-            "A. Kumar"
-          ],
-          "year": 2024,
-          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
-          "url": "https://example.org/papers/multi-agent-collaboration-2024",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 58,
-          "score": 0.98
-        },
-        {
-          "paper_id": "offline:long-term-memory-agents-2025",
-          "title": "Long-Term Memory Mechanisms for Stateful LLM Agents",
-          "authors": [
-            "N. Brown",
-            "H. Li"
-          ],
-          "year": 2025,
-          "abstract": "The study analyzes episodic memory, vector memory, structured memory, and retrieval policies for stateful LLM agents across sessions.",
-          "url": "https://example.org/papers/long-term-memory-agents-2025",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 36,
-          "score": 0.86
+          "score": 3.05
         },
         {
           "paper_id": "offline:research-agent-evaluation-2025",
@@ -86,7 +54,39 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 24,
-          "score": 0.74
+          "score": 2.64
+        },
+        {
+          "paper_id": "offline:long-term-memory-agents-2025",
+          "title": "Long-Term Memory Mechanisms for Stateful LLM Agents",
+          "authors": [
+            "N. Brown",
+            "H. Li"
+          ],
+          "year": 2025,
+          "abstract": "The study analyzes episodic memory, vector memory, structured memory, and retrieval policies for stateful LLM agents across sessions.",
+          "url": "https://example.org/papers/long-term-memory-agents-2025",
+          "doi": null,
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 36,
+          "score": 1.76
+        },
+        {
+          "paper_id": "offline:citation-hallucination-2026",
+          "title": "Detecting Citation Hallucinations in Scientific Text Generation",
+          "authors": [
+            "R. Smith",
+            "Y. Zhao"
+          ],
+          "year": 2026,
+          "abstract": "This work introduces retrieval-grounded citation checking for scientific writing and evaluates title, author, DOI, and claim-evidence alignment.",
+          "url": "https://example.org/papers/citation-hallucination-2026",
+          "doi": "10.0000/example.citecheck",
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 9,
+          "score": 1.5699999999999998
         }
       ],
       "report_path": "examples\\reports\\agentic-rag-for-enterprise-knowledge-management.md",
@@ -109,6 +109,7 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "research_lens_coverage": 0.714,
         "graph_runtime": "sequential",
         "dimension_scores": {
           "task_completion": 20.0,
@@ -125,7 +126,7 @@
       "topic": "Agentic RAG for enterprise knowledge management"
     },
     {
-      "task_id": "20260610143902-multi-agent-collaboration-in-llm",
+      "task_id": "20260610152112-multi-agent-collaboration-in-llm",
       "status": "success",
       "selected_papers": [
         {
@@ -142,7 +143,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 58,
-          "score": 8.98
+          "score": 12.9
         },
         {
           "paper_id": "offline:llm-agents-software-engineering-2024",
@@ -158,23 +159,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 73,
-          "score": 3.13
-        },
-        {
-          "paper_id": "offline:agentic-rag-survey-2025",
-          "title": "A Survey of Agentic Retrieval-Augmented Generation",
-          "authors": [
-            "L. Chen",
-            "M. Patel"
-          ],
-          "year": 2025,
-          "abstract": "This survey summarizes agentic retrieval-augmented generation systems, including query planning, tool use, reflection, memory, and evaluation for enterprise knowledge workflows.",
-          "url": "https://example.org/papers/agentic-rag-survey-2025",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 42,
-          "score": 2.92
+          "score": 5.050000000000001
         },
         {
           "paper_id": "offline:long-term-memory-agents-2025",
@@ -190,7 +175,23 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 36,
-          "score": 2.86
+          "score": 4.760000000000001
+        },
+        {
+          "paper_id": "offline:agentic-rag-survey-2025",
+          "title": "A Survey of Agentic Retrieval-Augmented Generation",
+          "authors": [
+            "L. Chen",
+            "M. Patel"
+          ],
+          "year": 2025,
+          "abstract": "This survey summarizes agentic retrieval-augmented generation systems, including query planning, tool use, reflection, memory, and evaluation for enterprise knowledge workflows.",
+          "url": "https://example.org/papers/agentic-rag-survey-2025",
+          "doi": null,
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 42,
+          "score": 1.8199999999999998
         },
         {
           "paper_id": "offline:research-agent-evaluation-2025",
@@ -206,7 +207,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 24,
-          "score": 0.74
+          "score": 0.64
         }
       ],
       "report_path": "examples\\reports\\multi-agent-collaboration-in-llm-systems.md",
@@ -229,6 +230,7 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
           "task_completion": 20.0,
@@ -245,7 +247,7 @@
       "topic": "Multi-agent collaboration in LLM systems"
     },
     {
-      "task_id": "20260610143902-llm-agents-for-software-engineer",
+      "task_id": "20260610152112-llm-agents-for-software-engineer",
       "status": "success",
       "selected_papers": [
         {
@@ -262,7 +264,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 73,
-          "score": 9.13
+          "score": 16.05
         },
         {
           "paper_id": "offline:long-term-memory-agents-2025",
@@ -278,23 +280,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 36,
-          "score": 4.86
-        },
-        {
-          "paper_id": "offline:multi-agent-collaboration-2024",
-          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
-          "authors": [
-            "S. Wang",
-            "A. Kumar"
-          ],
-          "year": 2024,
-          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
-          "url": "https://example.org/papers/multi-agent-collaboration-2024",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 58,
-          "score": 2.98
+          "score": 8.76
         },
         {
           "paper_id": "offline:research-agent-evaluation-2025",
@@ -310,7 +296,23 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 24,
-          "score": 2.74
+          "score": 4.640000000000001
+        },
+        {
+          "paper_id": "offline:multi-agent-collaboration-2024",
+          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
+          "authors": [
+            "S. Wang",
+            "A. Kumar"
+          ],
+          "year": 2024,
+          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
+          "url": "https://example.org/papers/multi-agent-collaboration-2024",
+          "doi": null,
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 58,
+          "score": 1.9
         },
         {
           "paper_id": "offline:agentic-rag-survey-2025",
@@ -326,7 +328,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 42,
-          "score": 0.9199999999999999
+          "score": 0.8200000000000001
         }
       ],
       "report_path": "examples\\reports\\llm-agents-for-software-engineering.md",
@@ -349,6 +351,7 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
           "task_completion": 20.0,
@@ -365,7 +368,7 @@
       "topic": "LLM agents for software engineering"
     },
     {
-      "task_id": "20260610143902-citation-hallucination-detection",
+      "task_id": "20260610152112-citation-hallucination-detection",
       "status": "success",
       "selected_papers": [
         {
@@ -382,7 +385,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 9,
-          "score": 8.69
+          "score": 12.57
         },
         {
           "paper_id": "offline:research-agent-evaluation-2025",
@@ -398,7 +401,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 24,
-          "score": 2.74
+          "score": 1.64
         },
         {
           "paper_id": "offline:llm-agents-software-engineering-2024",
@@ -414,7 +417,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 73,
-          "score": 1.13
+          "score": 1.05
         },
         {
           "paper_id": "offline:multi-agent-collaboration-2024",
@@ -430,7 +433,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 58,
-          "score": 0.98
+          "score": 0.8999999999999999
         },
         {
           "paper_id": "offline:agentic-rag-survey-2025",
@@ -446,7 +449,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 42,
-          "score": 0.9199999999999999
+          "score": 0.8200000000000001
         }
       ],
       "report_path": "examples\\reports\\citation-hallucination-detection-in-scientific-w.md",
@@ -469,6 +472,7 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
           "task_completion": 20.0,
@@ -485,7 +489,7 @@
       "topic": "Citation hallucination detection in scientific writing"
     },
     {
-      "task_id": "20260610143902-long-term-memory-mechanisms-for",
+      "task_id": "20260610152112-long-term-memory-mechanisms-for",
       "status": "success",
       "selected_papers": [
         {
@@ -502,7 +506,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 36,
-          "score": 10.86
+          "score": 18.759999999999998
         },
         {
           "paper_id": "offline:llm-agents-software-engineering-2024",
@@ -518,39 +522,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 73,
-          "score": 5.130000000000001
-        },
-        {
-          "paper_id": "offline:multi-agent-collaboration-2024",
-          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
-          "authors": [
-            "S. Wang",
-            "A. Kumar"
-          ],
-          "year": 2024,
-          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
-          "url": "https://example.org/papers/multi-agent-collaboration-2024",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 58,
-          "score": 2.98
-        },
-        {
-          "paper_id": "offline:agentic-rag-survey-2025",
-          "title": "A Survey of Agentic Retrieval-Augmented Generation",
-          "authors": [
-            "L. Chen",
-            "M. Patel"
-          ],
-          "year": 2025,
-          "abstract": "This survey summarizes agentic retrieval-augmented generation systems, including query planning, tool use, reflection, memory, and evaluation for enterprise knowledge workflows.",
-          "url": "https://example.org/papers/agentic-rag-survey-2025",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 42,
-          "score": 2.92
+          "score": 9.05
         },
         {
           "paper_id": "offline:research-agent-evaluation-2025",
@@ -566,7 +538,39 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 24,
-          "score": 2.74
+          "score": 4.640000000000001
+        },
+        {
+          "paper_id": "offline:multi-agent-collaboration-2024",
+          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
+          "authors": [
+            "S. Wang",
+            "A. Kumar"
+          ],
+          "year": 2024,
+          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
+          "url": "https://example.org/papers/multi-agent-collaboration-2024",
+          "doi": null,
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 58,
+          "score": 1.9
+        },
+        {
+          "paper_id": "offline:agentic-rag-survey-2025",
+          "title": "A Survey of Agentic Retrieval-Augmented Generation",
+          "authors": [
+            "L. Chen",
+            "M. Patel"
+          ],
+          "year": 2025,
+          "abstract": "This survey summarizes agentic retrieval-augmented generation systems, including query planning, tool use, reflection, memory, and evaluation for enterprise knowledge workflows.",
+          "url": "https://example.org/papers/agentic-rag-survey-2025",
+          "doi": null,
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 42,
+          "score": 1.8199999999999998
         }
       ],
       "report_path": "examples\\reports\\long-term-memory-mechanisms-for-llm-agents.md",
@@ -589,6 +593,7 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
           "task_completion": 20.0,
