@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .evaluation import evaluate_state, render_evaluation_markdown
+from .graph import NodeSpec, run_research_graph
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, ResearchResult
 from .offline_data import OFFLINE_PAPERS
 from .planner import plan_queries, topic_terms
 from .report import render_report
+from .state import ResearchState
 from .tools import ArxivSearchError, search_arxiv
 
 
@@ -27,7 +29,7 @@ def slugify(value: str, max_length: int = 48) -> str:
 
 
 def make_task_id(topic: str) -> str:
-    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     return f"{stamp}-{slugify(topic, 32)}"
 
 
@@ -173,6 +175,12 @@ def synthesize_claims(topic: str, evidence_items: list[EvidenceItem]) -> list[Cl
 def check_citations(papers: list[PaperRecord], claims: list[ClaimRecord]) -> list[CitationCheck]:
     checks: list[CitationCheck] = []
     paper_ids = {paper.paper_id for paper in papers}
+    evidence_ids = {
+        evidence_id
+        for claim in claims
+        for evidence_id in claim.evidence_ids
+        if evidence_id
+    }
     for index, paper in enumerate(papers, start=1):
         if not paper.title or not paper.url:
             status = "failed"
@@ -205,12 +213,117 @@ def check_citations(papers: list[PaperRecord], claims: list[ClaimRecord]) -> lis
                 message=f"Unsupported claims: {', '.join(unsupported_claims)}",
             )
         )
+    missing_evidence = [
+        claim.claim_id
+        for claim in claims
+        if any(not evidence_id for evidence_id in claim.evidence_ids)
+    ]
+    if missing_evidence:
+        checks.append(
+            CitationCheck(
+                check_id="check-evidence-links",
+                paper_id="claims",
+                status="failed",
+                message=f"Claims contain empty evidence IDs: {', '.join(missing_evidence)}",
+            )
+        )
+    if claims and not evidence_ids:
+        checks.append(
+            CitationCheck(
+                check_id="check-evidence-ledger",
+                paper_id="claims",
+                status="failed",
+                message="No claim-evidence links were produced.",
+            )
+        )
     return checks
+
+
+def _serialize(value: Any) -> Any:
+    if hasattr(value, "to_dict"):
+        return value.to_dict()
+    if isinstance(value, list):
+        return [_serialize(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _serialize(item) for key, item in value.items()}
+    return value
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def node_plan_queries(state: ResearchState) -> dict[str, Any]:
+    requested_source = state["requested_source"]
+    return {"query_plan": plan_queries(state["topic"], source=requested_source)}
+
+
+def node_search_papers(state: ResearchState) -> dict[str, Any]:
+    searched_papers, actual_source, fallback_reason = search_source(
+        topic=state["topic"],
+        query_plan=state["query_plan"],
+        source=state["requested_source"],
+        limit=max(int(state["top_k"]) * 4, 10),
+    )
+    return {
+        "searched_papers": searched_papers,
+        "actual_source": actual_source,
+        "fallback_reason": fallback_reason or "",
+    }
+
+
+def node_rank_papers(state: ResearchState) -> dict[str, Any]:
+    return {
+        "selected_papers": rank_papers(
+            state["searched_papers"],
+            state["topic"],
+            top_k=int(state["top_k"]),
+        )
+    }
+
+
+def node_extract_evidence(state: ResearchState) -> dict[str, Any]:
+    return {"evidence_items": extract_evidence(state["selected_papers"])}
+
+
+def node_synthesize_claims(state: ResearchState) -> dict[str, Any]:
+    return {"claims": synthesize_claims(state["topic"], state["evidence_items"])}
+
+
+def node_check_citations(state: ResearchState) -> dict[str, Any]:
+    return {"citation_checks": check_citations(state["selected_papers"], state["claims"])}
+
+
+def node_write_report(state: ResearchState) -> dict[str, Any]:
+    report_markdown = render_report(
+        topic=state["topic"],
+        selected_papers=state["selected_papers"],
+        evidence_items=state["evidence_items"],
+        claims=state["claims"],
+        citation_checks=state["citation_checks"],
+    )
+    output_path = state.get("output_path")
+    report_path = Path(output_path) if output_path else Path("examples/reports") / f"{slugify(state['topic'])}.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report_markdown, encoding="utf-8")
+    return {"report_markdown": report_markdown, "report_path": str(report_path)}
+
+
+def node_evaluate_result(state: ResearchState) -> dict[str, Any]:
+    return {"metrics": evaluate_state(state)}
+
+
+RESEARCH_NODES: list[NodeSpec] = [
+    ("plan_queries", node_plan_queries),
+    ("search_papers", node_search_papers),
+    ("rank_papers", node_rank_papers),
+    ("extract_evidence", node_extract_evidence),
+    ("synthesize_claims", node_synthesize_claims),
+    ("check_citations", node_check_citations),
+    ("write_report", node_write_report),
+    ("evaluate_result", node_evaluate_result),
+]
 
 
 def run_research(
@@ -228,42 +341,19 @@ def run_research(
 
     task_id = make_task_id(topic)
     requested_source = "offline" if offline else source
-    query_plan = plan_queries(topic, source=requested_source)
-
-    searched_papers, actual_source, fallback_reason = search_source(
-        topic=topic,
-        query_plan=query_plan,
-        source=requested_source,
-        limit=max(top_k * 4, 10),
-    )
-    selected_papers = rank_papers(searched_papers, topic, top_k=top_k)
-    evidence_items = extract_evidence(selected_papers)
-    claims = synthesize_claims(topic, evidence_items)
-    citation_checks = check_citations(selected_papers, claims)
-
-    report_markdown = render_report(
-        topic=topic,
-        selected_papers=selected_papers,
-        evidence_items=evidence_items,
-        claims=claims,
-        citation_checks=citation_checks,
-    )
-
-    report_path = Path(output) if output else Path("examples/reports") / f"{slugify(topic)}.md"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(report_markdown, encoding="utf-8")
-
-    passed_checks = sum(1 for check in citation_checks if check.status == "passed")
-    metrics: dict[str, int | float | str] = {
-        "query_count": len(query_plan),
-        "searched_paper_count": len(searched_papers),
-        "selected_paper_count": len(selected_papers),
-        "evidence_count": len(evidence_items),
-        "citation_check_pass_rate": round(passed_checks / max(len(citation_checks), 1), 3),
+    initial_state: ResearchState = {
+        "task_id": task_id,
+        "topic": topic.strip(),
+        "top_k": top_k,
         "requested_source": requested_source,
-        "actual_source": actual_source,
-        "fallback_reason": fallback_reason or "",
+        "output_path": output,
+        "write_trace": write_trace,
+        "errors": [],
+        "node_trace": [],
     }
+    final_state = run_research_graph(initial_state, RESEARCH_NODES)
+    metrics = dict(final_state["metrics"])
+    metrics["graph_runtime"] = final_state.get("graph_runtime", metrics.get("graph_runtime", ""))
 
     trace_path: Path | None = None
     if write_trace:
@@ -272,12 +362,16 @@ def run_research(
             trace_path,
             {
                 "task_id": task_id,
-                "topic": topic,
-                "query_plan": [item.to_dict() for item in query_plan],
-                "selected_papers": [paper.to_dict() for paper in selected_papers],
-                "evidence_items": [item.to_dict() for item in evidence_items],
-                "claims": [claim.to_dict() for claim in claims],
-                "citation_checks": [check.to_dict() for check in citation_checks],
+                "topic": topic.strip(),
+                "graph_runtime": final_state.get("graph_runtime", ""),
+                "query_plan": _serialize(final_state.get("query_plan", [])),
+                "searched_papers": _serialize(final_state.get("searched_papers", [])),
+                "selected_papers": _serialize(final_state.get("selected_papers", [])),
+                "evidence_items": _serialize(final_state.get("evidence_items", [])),
+                "claims": _serialize(final_state.get("claims", [])),
+                "citation_checks": _serialize(final_state.get("citation_checks", [])),
+                "node_trace": _serialize(final_state.get("node_trace", [])),
+                "errors": _serialize(final_state.get("errors", [])),
                 "metrics": metrics,
             },
         )
@@ -285,8 +379,8 @@ def run_research(
     return ResearchResult(
         task_id=task_id,
         status="success",
-        selected_papers=selected_papers,
-        report_path=str(report_path),
+        selected_papers=final_state.get("selected_papers", []),
+        report_path=final_state["report_path"],
         trace_path=str(trace_path) if trace_path else None,
         metrics=metrics,
     )
@@ -306,17 +400,25 @@ def evaluate_benchmark(
         result = run_research(
             topic=task["topic"],
             top_k=int(task.get("top_k", 5)),
-            offline=True,
+            source=task.get("source", "offline"),
+            offline=bool(task.get("offline", task.get("source", "offline") == "offline")),
             write_trace=False,
         )
-        results.append(result.to_dict())
+        result_payload = result.to_dict()
+        result_payload["topic"] = task["topic"]
+        results.append(result_payload)
+
+    scores = [float(item["metrics"].get("overall_score", 0.0)) for item in results]
 
     summary = {
         "benchmark": str(benchmark_path),
         "task_count": len(tasks),
         "success_count": sum(1 for item in results if item["status"] == "success"),
+        "average_score": round(sum(scores) / max(len(scores), 1), 3),
         "results": results,
     }
     if output_path:
         write_json(output_path, summary)
+        markdown_path = output_path.with_suffix(".md")
+        markdown_path.write_text(render_evaluation_markdown(summary), encoding="utf-8")
     return summary

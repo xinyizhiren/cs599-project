@@ -80,7 +80,7 @@ class ResearchResult:
     status: str
     selected_papers: list[PaperRecord]
     report_path: str
-    metrics: dict[str, int | float | str]
+    metrics: dict[str, Any]
     trace_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

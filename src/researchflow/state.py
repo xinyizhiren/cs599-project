@@ -1,0 +1,30 @@
+"""State contract for the ResearchFlow agent workflow."""
+
+from __future__ import annotations
+
+from typing import Any, TypedDict
+
+from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem
+
+
+class ResearchState(TypedDict, total=False):
+    task_id: str
+    topic: str
+    top_k: int
+    requested_source: str
+    actual_source: str
+    fallback_reason: str
+    output_path: str | None
+    write_trace: bool
+    query_plan: list[QueryItem]
+    searched_papers: list[PaperRecord]
+    selected_papers: list[PaperRecord]
+    evidence_items: list[EvidenceItem]
+    claims: list[ClaimRecord]
+    citation_checks: list[CitationCheck]
+    report_markdown: str
+    report_path: str
+    metrics: dict[str, Any]
+    errors: list[dict[str, Any]]
+    node_trace: list[dict[str, Any]]
+    graph_runtime: str

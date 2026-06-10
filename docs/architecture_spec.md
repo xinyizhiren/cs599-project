@@ -5,7 +5,7 @@
 
 ## 1. 架构目标
 
-ResearchFlow 的架构目标是构建一个可扩展、可恢复、可观测的多智能体文献调研系统。系统应将长流程调研任务拆成多个职责明确的 Agent 节点，并通过 LangGraph 状态图编排。
+ResearchFlow 的架构目标是构建一个可扩展、可恢复、可观测的多智能体文献调研系统。系统应将长流程调研任务拆成多个职责明确的 Agent 节点，并优先通过 LangGraph 状态图编排；当 LangGraph 依赖不可用时，系统使用同一节点契约的顺序 graph fallback，保证 Demo 稳定。
 
 核心原则：
 
@@ -28,7 +28,7 @@ CLI/API Entry
 | 层级 | 说明 |
 | --- | --- |
 | CLI/API Entry | 接收用户主题、Top-K、输出路径等参数 |
-| ResearchGraph Orchestrator | 维护任务状态、节点路由、失败重试和恢复 |
+| ResearchGraph Orchestrator | 维护任务状态、节点路由、失败重试、trace 和 fallback |
 | Agent Nodes | Query Planner、Searcher、Reader、Extractor、Synthesizer、Checker、Reporter |
 | Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、PDF parser、Markdown writer |
 | Storage and Memory | SQLite 存储任务、论文、证据、报告和 trace |
@@ -51,7 +51,8 @@ flowchart TD
     J -- "No" --> C
     J -- "Yes" --> K["Report Writer"]
     K --> L["Markdown Report"]
-    L --> M["Evaluation"]
+    L --> M["Evaluator"]
+    M --> N["Scores and Trace"]
 ```
 
 ## 4. 核心组件
@@ -162,6 +163,17 @@ flowchart TD
 
 - `report_markdown`
 
+### 4.9 Evaluator
+
+职责：
+
+- 按 100 分制输出任务完成、检索质量、证据可信、报告质量和 Agent 行为得分。
+- 生成 JSON 和 Markdown 评估结果。
+
+输出：
+
+- `metrics`
+
 ## 5. 状态模型
 
 ```python
@@ -173,9 +185,10 @@ class ResearchState(TypedDict):
     searched_papers: list[dict]
     selected_papers: list[dict]
     evidence_items: list[dict]
-    synthesis: dict
+    claims: list[dict]
     citation_checks: list[dict]
     report_markdown: str
+    node_trace: list[dict]
     errors: list[dict]
     metrics: dict
 ```
@@ -238,7 +251,7 @@ flowchart LR
 - retry_count
 - error_message
 
-MVP 阶段以日志和 JSON trace 文件为主，Final 阶段可扩展为可视化 trace。
+MVP 阶段以日志、JSON trace 文件和 Markdown 评估表为主，Final 阶段可扩展为可视化 trace。
 
 ## 10. 安全与合规
 

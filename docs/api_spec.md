@@ -47,7 +47,18 @@ python -m researchflow evaluate --benchmark examples/benchmarks/basic.jsonl
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | --benchmark | path | 是 | 无 | benchmark 文件路径 |
-| --output | path | 否 | examples/evaluation/results.json | 评估结果路径 |
+| --output | path | 否 | examples/evaluation/results.json | JSON 评估结果路径；系统同时生成同名 Markdown 报告 |
+
+输出 JSON 摘要：
+
+```json
+{
+  "task_count": 5,
+  "success_count": 5,
+  "average_score": 100.0,
+  "results": []
+}
+```
 
 ### 2.3 查看版本
 
@@ -79,7 +90,7 @@ python -m researchflow version
 def run_research(
     topic: str,
     top_k: int = 5,
-    source: str = "arxiv",
+    source: str = "offline",
     output: str | None = None,
     offline: bool = False,
 ) -> ResearchResult:
@@ -94,7 +105,7 @@ class ResearchResult(BaseModel):
     status: str
     selected_papers: list[PaperRecord]
     report_path: str
-    metrics: dict[str, float | int | str]
+    metrics: dict
 ```
 
 ### 4.2 evaluate_benchmark
@@ -223,10 +234,12 @@ def write_report(
 
 ## 1. Research Background
 ## 2. Core Papers
-## 3. Method Taxonomy
-## 4. Comparative Analysis
-## 5. Research Gaps
-## 6. Limitations of This Automated Review
+## 3. Key Claims and Evidence
+## 4. Method Taxonomy
+## 5. Comparative Analysis
+## 6. Research Gaps
+## 7. Limitations of This Automated Review
+## Citation Checks
 ## References
 ```
 
@@ -295,7 +308,20 @@ def write_report(
 | RF005 | 引用校验失败 | 标记低可信，不进入强结论 |
 | RF006 | 报告写入失败 | 保存中间状态并返回错误 |
 
-## 8. 兼容性计划
+## 8. 评估指标
+
+| 指标 | 说明 |
+| --- | --- |
+| overall_score | 100 分制综合分 |
+| citation_check_pass_rate | 引用校验通过率 |
+| claim_evidence_coverage | 有证据支持的 claim 比例 |
+| unsupported_claim_rate | 无证据 claim 比例 |
+| hallucinated_reference_count | 不来自候选论文的引用数量 |
+| report_section_completeness | 报告章节完整率 |
+| node_trace_count | Agent 节点 trace 数量 |
+| graph_runtime | langgraph / sequential / sequential_fallback |
+
+## 9. 兼容性计划
 
 MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture 和 arXiv XML 解析/检索；Semantic Scholar、OpenAlex 和 Crossref 校验作为后续工具接入。后续可将 Tool 层暴露为 MCP server：
 

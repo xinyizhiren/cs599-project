@@ -72,28 +72,30 @@ MVP 阶段暂不追求大规模全文阅读，不做复杂 Web UI，不做多领
 - API Spec：CLI/API 参数、工具接口、报告数据结构
 - arXiv Tool：真实论文检索工具初版
 
-### 2026-06-07：核心闭环实现
+### 2026-06-07 至 2026-06-10：核心闭环实现
 
-- [ ] 搭建 Python 项目结构
-- [ ] 实现配置管理，禁止硬编码 API Key
-- [ ] 实现论文检索工具，优先接入 arXiv 和 Semantic Scholar
-- [ ] 实现候选论文去重、排序和 Top-K 筛选
-- [ ] 实现结构化证据抽取
-- [ ] 实现 Markdown 报告生成
-- [ ] 实现最小 LangGraph 工作流
+- [x] 搭建 Python 项目结构
+- [x] 实现配置管理，禁止硬编码 API Key
+- [x] 实现论文检索工具，优先接入 arXiv
+- [x] 实现候选论文去重、排序和 Top-K 筛选
+- [x] 实现结构化证据抽取
+- [x] 实现 Markdown 报告生成
+- [x] 实现最小 graph 工作流，LangGraph 可用时优先使用，否则顺序 fallback
+- [x] 实现本地 evaluator 和 100 分制评估指标
 
 交付物：
 
 - 可运行的命令行 Demo
 - 示例输入主题
 - 示例调研报告
+- JSON/Markdown 评估输出
 
 ### 2026-06-08：MVP 提交
 
-- [ ] 完成 README 启动说明
-- [ ] 添加基础测试
+- [x] 完成 README 启动说明
+- [x] 添加基础测试
 - [ ] 准备 Demo 截图
-- [ ] 推送 GitHub
+- [x] 推送 GitHub
 - [ ] 创建 `v0.1` tag
 
 MVP 验收标准：

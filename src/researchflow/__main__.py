@@ -29,7 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_parser = subparsers.add_parser("evaluate", help="Run benchmark tasks.")
     eval_parser.add_argument("--benchmark", required=True, help="JSONL benchmark file.")
-    eval_parser.add_argument("--output", default=None, help="Evaluation JSON output path.")
+    eval_parser.add_argument(
+        "--output",
+        default="examples/evaluation/results.json",
+        help="Evaluation JSON output path. A Markdown report is written next to it.",
+    )
 
     subparsers.add_parser("version", help="Print version.")
     return parser
@@ -63,9 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "evaluate":
         summary = evaluate_benchmark(
             benchmark_path=Path(args.benchmark),
-            output_path=Path(args.output) if args.output else None,
+            output_path=Path(args.output),
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
+        print(f"Evaluation JSON: {args.output}")
+        print(f"Evaluation Markdown: {Path(args.output).with_suffix('.md')}")
         return 0
 
     parser.error("Unknown command")

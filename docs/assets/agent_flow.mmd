@@ -1,0 +1,10 @@
+flowchart TD
+    A["User Topic"] --> B["plan_queries"]
+    B --> C["search_papers"]
+    C --> D["rank_papers"]
+    D --> E["extract_evidence"]
+    E --> F["synthesize_claims"]
+    F --> G["check_citations"]
+    G --> H["write_report"]
+    H --> I["evaluate_result"]
+    I --> J["Report + Trace + Scores"]

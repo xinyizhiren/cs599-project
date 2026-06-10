@@ -4,7 +4,7 @@
 
 ## 1. 架构摘要
 
-ResearchFlow 采用 LangGraph 编排的多智能体架构，将文献调研拆分为检索规划、论文搜索、证据抽取、综合分析、引用校验和报告生成等节点。
+ResearchFlow 采用 ResearchGraph 编排的多智能体架构，将文献调研拆分为检索规划、论文搜索、证据抽取、综合分析、引用校验、报告生成和结果评估等节点。LangGraph 可用时优先使用 LangGraph 状态图；依赖不可用时使用同一节点契约的顺序 fallback。
 
 系统重点解决三个问题：
 
@@ -20,7 +20,7 @@ CLI/API Entry
 → Agent Nodes
 → Tool Layer
 → Storage and Memory
-→ Evaluation
+→ Evaluation and Trace
 ```
 
 ## 3. Agent 交互流程
@@ -34,7 +34,8 @@ flowchart TD
     E --> F["Research Synthesizer"]
     F --> G["Citation Checker"]
     G --> H["Report Writer"]
-    H --> I["Markdown Report"]
+    H --> I["Evaluator"]
+    I --> J["Markdown Report + Scores"]
 ```
 
 ## 4. 核心创新
@@ -43,3 +44,4 @@ flowchart TD
 - Claim-Evidence Alignment：每个关键结论绑定证据项。
 - Recoverable ResearchGraph：保存中间状态，失败后可恢复。
 - Built-in Evaluation：将评估作为系统模块，而不是 Demo 后补充。
+- Sequential Fallback：即使 LangGraph 或网络不可用，也能用离线样例稳定演示。

@@ -52,7 +52,20 @@ def render_report(
             ]
         )
 
-    lines.extend(["## 3. Method Taxonomy", ""])
+    lines.extend(["## 3. Key Claims and Evidence", ""])
+    if claims:
+        lines.append("| Claim ID | Type | Claim | Evidence IDs |")
+        lines.append("| --- | --- | --- | --- |")
+        for claim in claims:
+            evidence_refs = ", ".join(f"`{item}`" for item in claim.evidence_ids) or "None"
+            lines.append(
+                f"| `{claim.claim_id}` | {claim.claim_type} | {claim.claim_text} | {evidence_refs} |"
+            )
+        lines.append("")
+    else:
+        lines.extend(["No claims were generated.", ""])
+
+    lines.extend(["## 4. Method Taxonomy", ""])
     grouped: dict[str, list[EvidenceItem]] = defaultdict(list)
     for item in evidence_items:
         grouped[item.category].append(item)
@@ -63,7 +76,7 @@ def render_report(
             lines.append(f"- {item.claim} (`{item.evidence_id}`)")
         lines.append("")
 
-    lines.extend(["## 4. Comparative Analysis", ""])
+    lines.extend(["## 5. Comparative Analysis", ""])
     lines.append("| Paper | Main Evidence | Confidence |")
     lines.append("| --- | --- | --- |")
     for paper in selected_papers:
@@ -74,7 +87,7 @@ def render_report(
         lines.append(f"| {paper.title} | {evidence.claim} | {evidence.confidence:.2f} |")
     lines.append("")
 
-    lines.extend(["## 5. Research Gaps", ""])
+    lines.extend(["## 6. Research Gaps", ""])
     gap_claims = [claim for claim in claims if claim.claim_type == "Hypothesis"]
     if gap_claims:
         for claim in gap_claims:
@@ -84,7 +97,7 @@ def render_report(
         lines.append("- More full-text evidence is needed before making strong gap claims.")
     lines.append("")
 
-    lines.extend(["## 6. Limitations of This Automated Review", ""])
+    lines.extend(["## 7. Limitations of This Automated Review", ""])
     lines.extend(
         [
             "- MVP mode may rely on metadata and abstracts rather than full paper text.",
@@ -93,6 +106,13 @@ def render_report(
             "",
         ]
     )
+
+    lines.extend(["## Citation Checks", ""])
+    lines.append("| Check ID | Paper ID | Status | Message |")
+    lines.append("| --- | --- | --- | --- |")
+    for check in citation_checks:
+        lines.append(f"| `{check.check_id}` | `{check.paper_id}` | {check.status} | {check.message} |")
+    lines.append("")
 
     lines.extend(["## References", ""])
     for index, paper in enumerate(selected_papers, start=1):
