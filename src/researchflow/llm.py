@@ -14,6 +14,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from .env import load_local_env
+
 
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEEPSEEK_CHAT_COMPLETIONS_URL = "https://api.deepseek.com/chat/completions"
@@ -46,6 +48,7 @@ class DeepSeekClient:
     provider: str = "deepseek"
 
     def __post_init__(self) -> None:
+        load_local_env()
         self.api_key = self.api_key or os.environ.get("DEEPSEEK_API_KEY")
         self.model = self.model or os.environ.get("RESEARCHFLOW_MODEL", DEFAULT_DEEPSEEK_MODEL)
         self.timeout = self.timeout or float(os.environ.get("RESEARCHFLOW_LLM_TIMEOUT", "30"))

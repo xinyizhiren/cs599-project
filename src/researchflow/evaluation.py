@@ -108,7 +108,12 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     )
 
     expected_nodes = 7
-    tool_call_correctness = 1.0 if state.get("actual_source") in {"offline", "arxiv"} and searched else 0.0
+    tool_call_correctness = (
+        1.0
+        if state.get("actual_source") in {"offline", "arxiv", "semantic_scholar", "hybrid"}
+        and searched
+        else 0.0
+    )
     plan_adherence = 1.0 if query_plan and selected and evidence and checks else 0.0
     step_efficiency = max(0.0, 1.0 - max(0, len(trace) - expected_nodes) / expected_nodes)
     trace_completeness = min(1.0, _safe_divide(len(trace), expected_nodes))

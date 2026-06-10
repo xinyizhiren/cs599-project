@@ -21,7 +21,12 @@ from .offline_data import OFFLINE_PAPERS
 from .planner import plan_queries, topic_terms
 from .report import render_report
 from .state import ResearchState
-from .tools import ArxivSearchError, search_arxiv
+from .tools import (
+    ArxivSearchError,
+    SemanticScholarSearchError,
+    search_arxiv,
+    search_semantic_scholar,
+)
 
 
 def slugify(value: str, max_length: int = 48) -> str:
@@ -57,12 +62,41 @@ def dedupe_papers(papers: list[PaperRecord]) -> list[PaperRecord]:
     seen: set[str] = set()
     unique: list[PaperRecord] = []
     for paper in papers:
-        key = paper.paper_id or paper.url or paper.title.lower()
+        title_key = re.sub(r"\W+", "", paper.title.lower())
+        key = paper.doi or paper.arxiv_id or paper.paper_id or paper.url or title_key
+        if title_key in seen:
+            continue
         if key in seen:
             continue
         seen.add(key)
+        seen.add(title_key)
         unique.append(paper)
     return unique
+
+
+def _search_arxiv_queries(query_plan: list[Any], limit: int) -> tuple[list[PaperRecord], list[str]]:
+    collected: list[PaperRecord] = []
+    errors: list[str] = []
+    for query in query_plan[:3]:
+        try:
+            collected.extend(search_arxiv(query.query_text, limit=limit))
+        except ArxivSearchError as exc:
+            errors.append(str(exc))
+    return collected, errors
+
+
+def _search_semantic_scholar_queries(
+    query_plan: list[Any],
+    limit: int,
+) -> tuple[list[PaperRecord], list[str]]:
+    collected: list[PaperRecord] = []
+    errors: list[str] = []
+    for query in query_plan[:3]:
+        try:
+            collected.extend(search_semantic_scholar(query.query_text, limit=limit))
+        except SemanticScholarSearchError as exc:
+            errors.append(str(exc))
+    return collected, errors
 
 
 def search_source(
@@ -77,17 +111,29 @@ def search_source(
         return search_offline(topic, limit=limit), "offline", None
 
     if source == "arxiv":
-        collected: list[PaperRecord] = []
-        errors: list[str] = []
-        for query in query_plan[:3]:
-            try:
-                collected.extend(search_arxiv(query.query_text, limit=limit))
-            except ArxivSearchError as exc:
-                errors.append(str(exc))
+        collected, errors = _search_arxiv_queries(query_plan, limit)
         unique = dedupe_papers(collected)
         if unique:
             return unique[:limit], "arxiv", None
         fallback_reason = "; ".join(errors) or "arXiv returned no papers."
+        return search_offline(topic, limit=limit), "offline", fallback_reason
+
+    if source == "semantic_scholar":
+        collected, errors = _search_semantic_scholar_queries(query_plan, limit)
+        unique = dedupe_papers(collected)
+        if unique:
+            return unique[:limit], "semantic_scholar", None
+        fallback_reason = "; ".join(errors) or "Semantic Scholar returned no papers."
+        return search_offline(topic, limit=limit), "offline", fallback_reason
+
+    if source == "hybrid":
+        arxiv_papers, arxiv_errors = _search_arxiv_queries(query_plan[:2], limit)
+        semantic_papers, semantic_errors = _search_semantic_scholar_queries(query_plan[:2], limit)
+        unique = dedupe_papers(arxiv_papers + semantic_papers)
+        if unique:
+            return unique[:limit], "hybrid", None
+        errors = arxiv_errors + semantic_errors
+        fallback_reason = "; ".join(errors) or "Hybrid search returned no papers."
         return search_offline(topic, limit=limit), "offline", fallback_reason
 
     fallback_reason = f"Source '{source}' is not implemented; offline fallback used."
@@ -246,11 +292,19 @@ def polish_background_with_llm(
 
 def synthesize_claims(topic: str, evidence_items: list[EvidenceItem]) -> list[ClaimRecord]:
     contribution_ids = [
-        item.evidence_id for item in evidence_items if item.category == "contribution"
-    ][:3]
+        item.evidence_id
+        for item in evidence_items
+        if item.category in {"contribution", "method", "experiment"}
+    ][:4]
+    if not contribution_ids:
+        contribution_ids = [item.evidence_id for item in evidence_items[:4]]
     limitation_ids = [
-        item.evidence_id for item in evidence_items if item.category == "limitation"
+        item.evidence_id
+        for item in evidence_items
+        if item.category in {"limitation", "future_work"}
     ][:3]
+    if not limitation_ids:
+        limitation_ids = [item.evidence_id for item in evidence_items[-3:]]
     claims = [
         ClaimRecord(
             claim_id="c1",
@@ -425,6 +479,11 @@ def node_write_report(state: ResearchState) -> dict[str, Any]:
         evidence_items=state["evidence_items"],
         claims=state["claims"],
         citation_checks=state["citation_checks"],
+        query_plan=state.get("query_plan", []),
+        actual_source=state.get("actual_source", ""),
+        fallback_reason=state.get("fallback_reason", ""),
+        llm_provider=state.get("llm_provider", "off"),
+        llm_used=bool(state.get("llm_used", False)),
     )
     llm_used = bool(state.get("llm_used", False))
     llm_fallback_reason = state.get("llm_fallback_reason", "")
@@ -485,7 +544,7 @@ def run_research(
         raise ValueError("top_k must be greater than 0.")
 
     task_id = make_task_id(topic)
-    requested_source = "offline" if offline else source
+    requested_source = "offline" if offline else source.replace("-", "_")
     initial_state: ResearchState = {
         "task_id": task_id,
         "topic": topic.strip(),

@@ -21,7 +21,7 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --- | --- | --- | --- | --- |
 | topic | string | 是 | 无 | 研究主题 |
 | --top-k | int | 否 | 5 | 最终选择论文数量 |
-| --source | string | 否 | offline | 数据源，MVP 支持 offline 和 arxiv，semantic_scholar/openalex 为扩展 |
+| --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、hybrid |
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
 | --offline | bool | 否 | false | 是否使用离线样例数据 |
 | --trace | bool | 否 | true | 是否保存 trace |
@@ -82,6 +82,7 @@ python -m researchflow version
 
 - 代码不得硬编码 API Key。
 - `.env` 文件不得提交到仓库。
+- CLI 会自动读取本地 `.env`，但不会覆盖系统环境变量。
 - 离线模式不需要任何 API Key。
 
 ## 4. 内部 Python 接口
@@ -329,7 +330,7 @@ def write_report(
 
 ## 9. 兼容性计划
 
-MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture 和 arXiv XML 解析/检索；Semantic Scholar、OpenAlex 和 Crossref 校验作为后续工具接入。后续可将 Tool 层暴露为 MCP server：
+MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture、arXiv XML 解析/检索、Semantic Scholar JSON 解析/检索和 hybrid 多源检索；OpenAlex 和 Crossref 校验作为后续工具接入。后续可将 Tool 层暴露为 MCP server：
 
 | MCP Tool | 对应内部函数 |
 | --- | --- |

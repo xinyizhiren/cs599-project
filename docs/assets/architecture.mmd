@@ -1,7 +1,7 @@
 flowchart TD
     CLI["CLI / API Entry"] --> Graph["ResearchGraph Runner"]
     Graph --> Agents["Agent Nodes"]
-    Agents --> Tools["Tool Layer: offline / arXiv"]
+    Agents --> Tools["Tool Layer: offline / arXiv / Semantic Scholar / hybrid"]
     Tools --> Store["Trace and Report Artifacts"]
     Agents --> Eval["Local Evaluator"]
     Eval --> Score["JSON + Markdown Evaluation Report"]

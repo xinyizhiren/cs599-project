@@ -103,8 +103,11 @@ def build_arxiv_query_url(query: str, limit: int = 20) -> str:
     if not clean_query:
         raise ValueError("arXiv query cannot be empty.")
 
+    terms = re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", clean_query)
+    search_terms = [term for term in terms if len(term) > 2][:8]
+    search_query = " AND ".join(f"all:{term}" for term in search_terms) or f'all:"{clean_query}"'
     params = {
-        "search_query": f'all:"{clean_query}"',
+        "search_query": search_query,
         "start": "0",
         "max_results": str(max(1, min(limit, 50))),
         "sortBy": "submittedDate",

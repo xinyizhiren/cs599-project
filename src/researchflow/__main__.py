@@ -20,8 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--source",
         default="offline",
-        choices=["offline", "arxiv", "semantic_scholar", "openalex"],
-        help="Paper data source. MVP supports offline fixtures and arXiv.",
+        choices=["offline", "arxiv", "semantic_scholar", "semantic-scholar", "hybrid"],
+        help="Paper data source. Use hybrid for live arXiv + Semantic Scholar search.",
     )
     run_parser.add_argument("--output", default=None, help="Markdown report output path.")
     run_parser.add_argument("--offline", action="store_true", help="Force offline fixture mode.")
