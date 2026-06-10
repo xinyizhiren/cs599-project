@@ -4,9 +4,24 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import UTC, datetime
+import re
 from typing import Any
 
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord
+
+
+def _clip_table_text(value: str, max_length: int = 160) -> str:
+    text = " ".join(_sanitize_secret_text(value).replace("|", "\\|").split())
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3].rstrip() + "..."
+
+
+def _sanitize_secret_text(value: Any) -> str:
+    text = str(value)
+    text = re.sub(r"sk-[A-Za-z0-9]+", "[REDACTED_API_KEY]", text)
+    text = text.replace("DEEPSEEK_API_KEY", "[REDACTED_ENV_VAR]")
+    return text
 
 
 def render_report(
@@ -187,3 +202,166 @@ def render_report(
         lines.append(f"[P{index}] {authors}. ({paper.year}). {paper.title}. {paper.url}")
 
     return "\n".join(lines) + "\n"
+
+
+def render_process_markdown(state: dict[str, Any]) -> str:
+    """Render an auditable process log without exposing hidden model reasoning."""
+
+    metrics = state.get("metrics", {})
+    query_plan = state.get("query_plan", [])
+    searched_papers = state.get("searched_papers", [])
+    selected_papers = state.get("selected_papers", [])
+    evidence_items = state.get("evidence_items", [])
+    claims = state.get("claims", [])
+    citation_checks = state.get("citation_checks", [])
+    node_trace = state.get("node_trace", [])
+
+    source_counts: dict[str, int] = defaultdict(int)
+    for paper in searched_papers:
+        source_counts[getattr(paper, "source", "unknown")] += 1
+
+    lines: list[str] = [
+        f"# Research Process: {state.get('topic', '')}",
+        "",
+        "This file records observable Agent actions and artifacts. It is not a hidden chain-of-thought transcript.",
+        "",
+        "## Run Summary",
+        "",
+        f"- Task ID: `{state.get('task_id', '')}`",
+        f"- Requested source: `{state.get('requested_source', '')}`",
+        f"- Actual source: `{state.get('actual_source', '')}`",
+        f"- Fallback reason: {_sanitize_secret_text(state.get('fallback_reason', '') or 'None')}",
+        f"- Report path: `{state.get('report_path', '')}`",
+        f"- Graph runtime: `{state.get('graph_runtime', '')}`",
+        f"- LLM provider: `{state.get('llm_provider', 'off')}`",
+        f"- LLM used: `{str(state.get('llm_used', False)).lower()}`",
+        f"- LLM fallback reason: {_sanitize_secret_text(state.get('llm_fallback_reason', '') or 'None')}",
+        "",
+        "## Query Plan",
+        "",
+        "| Query ID | Search Query | Source Intent | Filters |",
+        "| --- | --- | --- | --- |",
+    ]
+    for query in query_plan:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    f"`{getattr(query, 'query_id', '')}`",
+                    _clip_table_text(getattr(query, "query_text", "")),
+                    getattr(query, "source", ""),
+                    f"`{getattr(query, 'filters', {})}`",
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(["", "## Search Results", ""])
+    lines.append(f"- Retrieved candidates before ranking: {len(searched_papers)}")
+    if source_counts:
+        lines.append(
+            "- Candidate source counts: "
+            + ", ".join(f"{source}={count}" for source, count in sorted(source_counts.items()))
+        )
+    lines.extend(
+        [
+            "",
+            "## Top-K Selection",
+            "",
+            "Ranking uses topic-term overlap, recency, citation count when available, and duplicate removal.",
+            "",
+            "| Rank | Paper ID | Title | Year | Source | Score | URL |",
+            "| ---: | --- | --- | ---: | --- | ---: | --- |",
+        ]
+    )
+    for index, paper in enumerate(selected_papers, start=1):
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(index),
+                    f"`{paper.paper_id}`",
+                    _clip_table_text(paper.title, 120),
+                    str(paper.year),
+                    paper.source,
+                    f"{paper.score:.3f}",
+                    paper.url,
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Evidence Extraction",
+            "",
+            "| Evidence ID | Paper ID | Category | Confidence | Claim |",
+            "| --- | --- | --- | ---: | --- |",
+        ]
+    )
+    for item in evidence_items:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    f"`{item.evidence_id}`",
+                    f"`{item.paper_id}`",
+                    item.category,
+                    f"{item.confidence:.2f}",
+                    _clip_table_text(item.claim, 180),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Claim-Evidence Alignment",
+            "",
+            "| Claim ID | Type | Claim | Evidence IDs |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for claim in claims:
+        evidence_refs = ", ".join(f"`{item}`" for item in claim.evidence_ids) or "None"
+        lines.append(
+            f"| `{claim.claim_id}` | {claim.claim_type} | "
+            f"{_clip_table_text(claim.claim_text, 180)} | {evidence_refs} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Citation Checks",
+            "",
+            "| Check ID | Paper ID | Status | Message |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for check in citation_checks:
+        lines.append(
+            f"| `{check.check_id}` | `{check.paper_id}` | {check.status} | "
+            f"{_clip_table_text(check.message)} |"
+        )
+
+    lines.extend(["", "## Agent Trace", "", "| Step | Node | Status | Output Keys |", "| ---: | --- | --- | --- |"])
+    for index, step in enumerate(node_trace, start=1):
+        node = step.get("node", "")
+        status = step.get("status", "")
+        output_keys = ", ".join(step.get("output_keys", []))
+        lines.append(f"| {index} | `{node}` | {status} | `{output_keys}` |")
+
+    lines.extend(["", "## Metrics", "", "| Metric | Value |", "| --- | --- |"])
+    for key, value in metrics.items():
+        if key == "dimension_scores" and isinstance(value, dict):
+            lines.append(f"| `{key}` | `{_sanitize_secret_text(json_like(value))}` |")
+        else:
+            lines.append(f"| `{key}` | `{_sanitize_secret_text(value)}` |")
+
+    return "\n".join(lines) + "\n"
+
+
+def json_like(value: dict[str, Any]) -> str:
+    return ", ".join(f"{key}: {item}" for key, item in value.items())

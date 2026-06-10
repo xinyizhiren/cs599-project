@@ -24,7 +24,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Paper data source. Use hybrid for live arXiv + Semantic Scholar search.",
     )
     run_parser.add_argument("--output", default=None, help="Markdown report output path.")
+    run_parser.add_argument(
+        "--process-output",
+        default=None,
+        help="Markdown process log output path.",
+    )
     run_parser.add_argument("--offline", action="store_true", help="Force offline fixture mode.")
+    run_parser.add_argument(
+        "--require-live",
+        action="store_true",
+        help="Fail if a live source request falls back to offline fixtures.",
+    )
     run_parser.add_argument("--trace", action="store_true", default=True, help="Write trace JSON.")
     run_parser.add_argument(
         "--llm",
@@ -59,14 +69,18 @@ def main(argv: list[str] | None = None) -> int:
             top_k=args.top_k,
             source=args.source,
             output=args.output,
+            process_output=args.process_output,
             offline=args.offline or args.source == "offline",
             write_trace=args.trace,
             llm=args.llm,
+            require_live=args.require_live,
         )
         print(f"Task ID: {result.task_id}")
         print(f"Status: {result.status}")
         print(f"Selected Papers: {len(result.selected_papers)}")
         print(f"Report: {result.report_path}")
+        if result.process_path:
+            print(f"Process: {result.process_path}")
         if result.trace_path:
             print(f"Trace: {result.trace_path}")
         return 0 if result.status == "success" else 1

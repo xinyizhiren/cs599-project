@@ -6,11 +6,13 @@ from researchflow.pipeline import run_research
 
 def test_run_research_offline_generates_report() -> None:
     output = Path("tmp/test_outputs/pipeline-report.md")
+    process_output = Path("tmp/test_outputs/pipeline-process.md")
 
     result = run_research(
         "Agentic RAG for enterprise knowledge management",
         top_k=3,
         output=str(output),
+        process_output=str(process_output),
         offline=True,
         write_trace=False,
     )
@@ -25,6 +27,13 @@ def test_run_research_offline_generates_report() -> None:
     assert result.metrics["evidence_count"] == 6
     assert result.metrics["overall_score"] > 80
     assert result.metrics["claim_evidence_coverage"] == 1.0
+    assert result.process_path == str(process_output)
+    process = process_output.read_text(encoding="utf-8")
+    assert "Research Process" in process
+    assert "Query Plan" in process
+    assert "Evidence Extraction" in process
+    assert "DEEPSEEK_API_KEY" not in process
+    assert "sk-" not in process
 
 
 def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
@@ -77,3 +86,27 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
     report = output.read_text(encoding="utf-8")
     assert "Executive Summary" in report
     assert "Evidence Ledger" in report
+
+
+def test_require_live_fails_when_live_source_falls_back(monkeypatch) -> None:
+    output = Path("tmp/test_outputs/live-required-report.md")
+    process_output = Path("tmp/test_outputs/live-required-process.md")
+
+    monkeypatch.setattr("researchflow.pipeline.search_arxiv", lambda query, limit=20: [])
+
+    result = run_research(
+        "rare live source topic",
+        top_k=2,
+        source="arxiv",
+        output=str(output),
+        process_output=str(process_output),
+        write_trace=False,
+        require_live=True,
+    )
+
+    assert result.status == "failed"
+    assert result.metrics["actual_source"] == "offline"
+    assert result.metrics["live_requirement_met"] is False
+    assert output.exists()
+    assert process_output.exists()
+    assert "live_requirement_error" in process_output.read_text(encoding="utf-8")

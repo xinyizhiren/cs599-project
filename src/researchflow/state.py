@@ -15,6 +15,8 @@ class ResearchState(TypedDict, total=False):
     actual_source: str
     fallback_reason: str
     output_path: str | None
+    process_output_path: str | None
+    process_path: str
     write_trace: bool
     llm_provider: str
     llm_used: bool

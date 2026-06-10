@@ -19,7 +19,7 @@ from .llm import LLMError, build_llm_client
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, ResearchResult
 from .offline_data import OFFLINE_PAPERS
 from .planner import plan_queries, topic_terms
-from .report import render_report
+from .report import render_process_markdown, render_report
 from .state import ResearchState
 from .tools import (
     ArxivSearchError,
@@ -534,9 +534,11 @@ def run_research(
     top_k: int = 5,
     source: str = "offline",
     output: str | None = None,
+    process_output: str | None = None,
     offline: bool = False,
     write_trace: bool = True,
     llm: str = "off",
+    require_live: bool = False,
 ) -> ResearchResult:
     if not topic.strip():
         raise ValueError("Research topic cannot be empty.")
@@ -551,6 +553,7 @@ def run_research(
         "top_k": top_k,
         "requested_source": requested_source,
         "output_path": output,
+        "process_output_path": process_output,
         "write_trace": write_trace,
         "llm_provider": llm,
         "llm_used": False,
@@ -561,6 +564,25 @@ def run_research(
     final_state = run_research_graph(initial_state, RESEARCH_NODES)
     metrics = dict(final_state["metrics"])
     metrics["graph_runtime"] = final_state.get("graph_runtime", metrics.get("graph_runtime", ""))
+    live_requirement_met = not (
+        require_live
+        and requested_source != "offline"
+        and final_state.get("actual_source") == "offline"
+    )
+    metrics["live_requirement_met"] = live_requirement_met
+    if not live_requirement_met:
+        metrics["live_requirement_error"] = (
+            "A live source was required, but the run fell back to offline fixtures."
+        )
+    final_state["metrics"] = metrics
+    status = "success" if live_requirement_met else "failed"
+
+    process_path: Path | None = None
+    if process_output:
+        process_path = Path(process_output)
+        process_path.parent.mkdir(parents=True, exist_ok=True)
+        final_state["process_path"] = str(process_path)
+        process_path.write_text(render_process_markdown(final_state), encoding="utf-8")
 
     trace_path: Path | None = None
     if write_trace:
@@ -579,16 +601,18 @@ def run_research(
                 "citation_checks": _serialize(final_state.get("citation_checks", [])),
                 "node_trace": _serialize(final_state.get("node_trace", [])),
                 "errors": _serialize(final_state.get("errors", [])),
+                "process_path": str(process_path) if process_path else None,
                 "metrics": metrics,
             },
         )
 
     return ResearchResult(
         task_id=task_id,
-        status="success",
+        status=status,
         selected_papers=final_state.get("selected_papers", []),
         report_path=final_state["report_path"],
         trace_path=str(trace_path) if trace_path else None,
+        process_path=str(process_path) if process_path else None,
         metrics=metrics,
     )
 

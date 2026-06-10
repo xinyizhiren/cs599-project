@@ -49,9 +49,12 @@ class DeepSeekClient:
 
     def __post_init__(self) -> None:
         load_local_env()
-        self.api_key = self.api_key or os.environ.get("DEEPSEEK_API_KEY")
-        self.model = self.model or os.environ.get("RESEARCHFLOW_MODEL", DEFAULT_DEEPSEEK_MODEL)
-        self.timeout = self.timeout or float(os.environ.get("RESEARCHFLOW_LLM_TIMEOUT", "30"))
+        if self.api_key is None:
+            self.api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if self.model is None:
+            self.model = os.environ.get("RESEARCHFLOW_MODEL", DEFAULT_DEEPSEEK_MODEL)
+        if self.timeout is None:
+            self.timeout = float(os.environ.get("RESEARCHFLOW_LLM_TIMEOUT", "30"))
 
     def generate_json(self, system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:

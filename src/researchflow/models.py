@@ -82,6 +82,7 @@ class ResearchResult:
     report_path: str
     metrics: dict[str, Any]
     trace_path: str | None = None
+    process_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,4 +92,5 @@ class ResearchResult:
             "report_path": self.report_path,
             "metrics": self.metrics,
             "trace_path": self.trace_path,
+            "process_path": self.process_path,
         }

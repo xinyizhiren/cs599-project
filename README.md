@@ -94,12 +94,13 @@ python -m researchflow run "Agentic RAG for enterprise knowledge management" --s
 ### 5. 运行真实联网调研报告
 
 ```powershell
-python -m researchflow run "large language model agents for software engineering" --source arxiv --top-k 5 --output docs/generated_reports/llm_agents_software_engineering_arxiv.md
+python -m researchflow run "retrieval augmented generation for large language models" --source arxiv --require-live --top-k 8 --output docs/generated_reports/rag_live_literature_review.md --process-output docs/generated_reports/rag_live_research_process.md
 ```
 
-该命令会真实调用 arXiv API，生成一份 Markdown 文献调研报告。当前仓库已包含一份生成样例：
+该命令会真实调用 arXiv API，生成一份 Markdown 文献调研报告和一份可审计调研过程记录。`--require-live` 会拒绝离线 fallback，避免把离线样例误认为联网调研。当前仓库已包含生成样例：
 
-- `docs/generated_reports/llm_agents_software_engineering_arxiv.md`
+- `docs/generated_reports/rag_live_literature_review.md`
+- `docs/generated_reports/rag_live_research_process.md`
 
 如果 arXiv 请求失败，系统会自动降级到离线样例，并在 metrics 中记录 fallback 原因。
 
@@ -115,10 +116,10 @@ python -m researchflow run "agentic literature review agents" --source hybrid --
 
 ```powershell
 $env:DEEPSEEK_API_KEY="your_deepseek_api_key"
-python -m researchflow run "large language model agents for software engineering" --source arxiv --llm deepseek --top-k 5 --output docs/generated_reports/deepseek_llm_agents_software_engineering.md
+python -m researchflow run "retrieval augmented generation for large language models" --source arxiv --require-live --llm deepseek --top-k 8 --output docs/generated_reports/rag_live_literature_review.md --process-output docs/generated_reports/rag_live_research_process.md
 ```
 
-DeepSeek 只用于证据抽取和报告背景段落润色。若未配置 Key、网络超时或模型输出无法解析，系统会自动回退到规则实现，并在 metrics 中记录 `llm_fallback_reason`。
+DeepSeek 只用于证据抽取和报告背景段落润色。若未配置 Key、网络超时或模型输出无法解析，系统会自动回退到规则实现，并在 metrics 中记录 `llm_fallback_reason`。过程记录输出的是可审计 Agent 行为，不包含大模型隐藏思考链。
 
 ### 8. 运行评估
 
@@ -135,6 +136,7 @@ python -m researchflow evaluate --benchmark examples/benchmarks/basic.jsonl --ou
 - [x] MVP
 - [x] Evaluation
 - [x] 真实联网文献调研报告样例
+- [x] 可审计调研过程记录
 - [ ] Final Report
 
 ## 课程交付要求跟踪

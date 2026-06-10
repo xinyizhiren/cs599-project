@@ -12,6 +12,7 @@ def test_parse_json_object_accepts_fenced_json() -> None:
 
 
 def test_deepseek_without_key_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("researchflow.llm.load_local_env", lambda: None)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     client = DeepSeekClient(api_key="")
 
@@ -64,6 +65,7 @@ def test_node_extract_evidence_falls_back_when_llm_fails(monkeypatch: pytest.Mon
 
 
 def test_run_research_deepseek_without_key_uses_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("researchflow.llm.load_local_env", lambda: None)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
     result = run_research(

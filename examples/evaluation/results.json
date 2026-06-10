@@ -5,7 +5,7 @@
   "average_score": 100.0,
   "results": [
     {
-      "task_id": "20260610141321-agentic-rag-for-enterprise-knowl",
+      "task_id": "20260610143902-agentic-rag-for-enterprise-knowl",
       "status": "success",
       "selected_papers": [
         {
@@ -117,13 +117,15 @@
           "report_quality": 20.0,
           "agent_behavior": 15.0
         },
-        "overall_score": 100.0
+        "overall_score": 100.0,
+        "live_requirement_met": true
       },
       "trace_path": null,
+      "process_path": null,
       "topic": "Agentic RAG for enterprise knowledge management"
     },
     {
-      "task_id": "20260610141321-multi-agent-collaboration-in-llm",
+      "task_id": "20260610143902-multi-agent-collaboration-in-llm",
       "status": "success",
       "selected_papers": [
         {
@@ -235,13 +237,15 @@
           "report_quality": 20.0,
           "agent_behavior": 15.0
         },
-        "overall_score": 100.0
+        "overall_score": 100.0,
+        "live_requirement_met": true
       },
       "trace_path": null,
+      "process_path": null,
       "topic": "Multi-agent collaboration in LLM systems"
     },
     {
-      "task_id": "20260610141321-llm-agents-for-software-engineer",
+      "task_id": "20260610143902-llm-agents-for-software-engineer",
       "status": "success",
       "selected_papers": [
         {
@@ -353,13 +357,15 @@
           "report_quality": 20.0,
           "agent_behavior": 15.0
         },
-        "overall_score": 100.0
+        "overall_score": 100.0,
+        "live_requirement_met": true
       },
       "trace_path": null,
+      "process_path": null,
       "topic": "LLM agents for software engineering"
     },
     {
-      "task_id": "20260610141321-citation-hallucination-detection",
+      "task_id": "20260610143902-citation-hallucination-detection",
       "status": "success",
       "selected_papers": [
         {
@@ -471,13 +477,15 @@
           "report_quality": 20.0,
           "agent_behavior": 15.0
         },
-        "overall_score": 100.0
+        "overall_score": 100.0,
+        "live_requirement_met": true
       },
       "trace_path": null,
+      "process_path": null,
       "topic": "Citation hallucination detection in scientific writing"
     },
     {
-      "task_id": "20260610141321-long-term-memory-mechanisms-for",
+      "task_id": "20260610143902-long-term-memory-mechanisms-for",
       "status": "success",
       "selected_papers": [
         {
@@ -589,9 +597,11 @@
           "report_quality": 20.0,
           "agent_behavior": 15.0
         },
-        "overall_score": 100.0
+        "overall_score": 100.0,
+        "live_requirement_met": true
       },
       "trace_path": null,
+      "process_path": null,
       "topic": "Long-term memory mechanisms for LLM agents"
     }
   ]
