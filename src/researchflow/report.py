@@ -229,6 +229,222 @@ def render_report(
     return "\n".join(lines) + "\n"
 
 
+def _citation_pass_rate(citation_checks: list[CitationCheck]) -> float:
+    if not citation_checks:
+        return 0.0
+    return sum(1 for check in citation_checks if check.status == "passed") / len(citation_checks)
+
+
+def _first_sentence(text: str, max_length: int = 170) -> str:
+    sentence = re.split(r"(?<=[.!?])\s+", " ".join(text.split()), maxsplit=1)[0]
+    return _clip_table_text(sentence, max_length)
+
+
+def _dimension_label(dimension: str) -> str:
+    labels = {
+        "Survey & Taxonomy": "综述与分类",
+        "Retrieval & Indexing": "检索与索引",
+        "Generation & Grounding": "生成与事实约束",
+        "Evaluation & Benchmarks": "评测与基准",
+        "Security & Robustness": "安全与鲁棒性",
+        "Graph & Structured RAG": "图结构与结构化 RAG",
+        "Domain Applications": "领域应用",
+        "Unclassified": "未分类",
+    }
+    return labels.get(dimension, dimension)
+
+
+def _representative_title(dimension: str, research_lens: dict[str, Any]) -> str:
+    for profile in research_lens.get("paper_profiles", []):
+        if dimension in profile.get("dimensions", []):
+            return _clip_table_text(profile.get("title", ""), 90)
+    return "-"
+
+
+def _dominant_dimensions(research_lens: dict[str, Any]) -> list[tuple[str, int]]:
+    counts = research_lens.get("dimension_counts", {})
+    if not isinstance(counts, dict):
+        return []
+    return sorted(
+        ((str(dimension), int(count)) for dimension, count in counts.items()),
+        key=lambda item: (-item[1], item[0]),
+    )
+
+
+def render_summary_report(state: dict[str, Any]) -> str:
+    """Render a synthesis-first report that reduces reading cost."""
+
+    topic = str(state.get("topic", ""))
+    selected_papers: list[PaperRecord] = state.get("selected_papers", [])
+    evidence_items: list[EvidenceItem] = state.get("evidence_items", [])
+    claims: list[ClaimRecord] = state.get("claims", [])
+    citation_checks: list[CitationCheck] = state.get("citation_checks", [])
+    metrics = state.get("metrics", {})
+    research_lens = state.get("research_lens", {})
+    generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+    dominant_dimensions = _dominant_dimensions(research_lens)
+    dimension_names = "、".join(_dimension_label(name) for name, _ in dominant_dimensions[:4])
+    missing_dimensions = research_lens.get("missing_dimensions", []) if research_lens else []
+    missing_text = "无明显缺口" if not missing_dimensions else "、".join(
+        _dimension_label(item) for item in missing_dimensions
+    )
+    citation_rate = float(metrics.get("citation_check_pass_rate", _citation_pass_rate(citation_checks)))
+    evidence_coverage = float(metrics.get("claim_evidence_coverage", 0.0))
+
+    lines: list[str] = [
+        f"# 领域调研总结：{topic}",
+        "",
+        f"- 生成时间：{generated_at}",
+        f"- 联网来源：`{state.get('actual_source', 'unknown')}`",
+        f"- 核心文献数：{len(selected_papers)}",
+        f"- 引用校验通过率：{citation_rate:.3f}",
+        f"- Claim-Evidence 覆盖率：{evidence_coverage:.3f}",
+        "",
+        "## 一句话结论",
+        "",
+        (
+            f"围绕 `{topic}`，当前更值得优先理解的不是单篇论文细节，而是 RAG "
+            "从“检索增强生成技巧”演进为一套可评测、可审计、需安全治理的系统工程方法；"
+            f"本次样本文献主要覆盖{dimension_names or '若干核心方向'}，"
+            f"待补充方向为：{missing_text}。"
+        ),
+        "",
+        "## 关键发现",
+        "",
+        (
+            f"- Agent 从真实开放学术源中检索并筛选了 {len(selected_papers)} 篇核心文献，"
+            "最终总结只保留结论、脉络和证据入口，降低逐篇阅读成本。"
+        ),
+        "- RAG 的主线已经从“把文档塞进上下文”转向检索、重排、生成、事实约束、评测和安全的端到端设计。",
+        "- 综述、评测和安全相关论文应优先阅读，因为它们决定领域地图、可靠性边界和落地风险。",
+        "- Citation 与 evidence 绑定是本项目的关键约束：总结中的判断不直接脱离检索文献生成。",
+        "- 仅基于标题和摘要仍不足以做最终学术结论；需要在后续版本接入全文解析和人工复核。",
+    ]
+
+    if research_lens:
+        lines.extend(
+            [
+                "",
+                "## 技术脉络",
+                "",
+                "| 方向 | 覆盖论文数 | 代表性文献 | 读者应关注的问题 |",
+                "| --- | ---: | --- | --- |",
+            ]
+        )
+        focus_questions = {
+            "Survey & Taxonomy": "先建立术语、分类和领域边界。",
+            "Retrieval & Indexing": "检索器、索引、chunk 与重排如何影响最终答案。",
+            "Generation & Grounding": "生成结果如何被上下文证据约束并减少幻觉。",
+            "Evaluation & Benchmarks": "如何用可复现基准评估 RAG 的有效性。",
+            "Security & Robustness": "如何处理投毒、隐私泄露和对抗样本风险。",
+            "Graph & Structured RAG": "何时需要图结构、知识图谱或因果结构增强。",
+            "Domain Applications": "哪些场景已经接近工程应用，哪些只是案例验证。",
+        }
+        for dimension, count in dominant_dimensions:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _dimension_label(dimension),
+                        str(count),
+                        _representative_title(dimension, research_lens),
+                        focus_questions.get(dimension, "结合证据判断其研究价值。"),
+                    ]
+                )
+                + " |"
+            )
+        lines.extend(
+            [
+                "",
+                f"Lens coverage: {float(research_lens.get('coverage', 0.0)):.3f}；"
+                f"缺失方向：{missing_text}。",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 当前共识",
+            "",
+            "- RAG 的价值在于把外部知识、可追溯证据和生成模型连接起来，从而缓解静态参数知识和上下文窗口限制。",
+            "- 检索质量会直接决定生成质量；坏检索会放大幻觉、遗漏和错误归因。",
+            "- 评测不能只看最终回答是否流畅，还要看来源是否有效、证据是否覆盖 claim、引用是否真实。",
+            "- 安全和隐私不再是附加项，RAG 系统中的检索库、查询日志、上下文注入和文档投毒都可能成为风险入口。",
+            "",
+            "## 主要难点",
+            "",
+            "- 相关论文筛选难：RAG 已经成为热门关键词，纯应用案例容易挤占真正的综述、评测和方法论文。",
+            "- 证据粒度不足：摘要级证据适合初筛，但不足以支撑细粒度方法比较和实验结论。",
+            "- 评价标准分散：faithfulness、context precision、answer relevancy、citation validity 等指标需要组合使用。",
+            "- 工程落地复杂：检索、重排、生成、缓存、权限、监控和安全策略需要协同设计。",
+            "",
+            "## 后续研究机会",
+            "",
+            "- 全文级 Evidence Ledger：从摘要级证据升级到段落级证据，并保留页码、章节和原文片段位置。",
+            "- Claim-Citation 自动审计：把每个关键结论映射到可验证 citation，统计 unsupported claim rate。",
+            "- 面向 RAG 的领域覆盖度评价：继续扩展 Research Lens，让系统能指出当前调研还缺哪些方向。",
+            "- 多源交叉验证：结合 arXiv、Semantic Scholar、Crossref、OpenAlex 和出版元数据降低单源偏差。",
+            "",
+            "## 工程落地建议",
+            "",
+            "1. 先读综述和 taxonomy，建立领域地图；再读 benchmark 和 security，确定评价与风险边界。",
+            "2. 对每个候选方案建立 Evidence Ledger，只把有 evidence_id 的结论写入正式报告。",
+            "3. 把调研产物分成三层：本总结用于快速决策，完整文献报告用于展开阅读，过程记录用于复核与复现。",
+            "4. 对重要结论安排人工复核，尤其是实验指标、对比结论和安全风险判断。",
+            "",
+            "## 证据来源",
+            "",
+            "| 序号 | 论文 | 年份 | 来源 | 关键证据摘要 | URL |",
+            "| ---: | --- | ---: | --- | --- | --- |",
+        ]
+    )
+    evidence_by_paper: dict[str, list[EvidenceItem]] = defaultdict(list)
+    for item in evidence_items:
+        evidence_by_paper[item.paper_id].append(item)
+    for index, paper in enumerate(selected_papers, start=1):
+        first_evidence = evidence_by_paper.get(paper.paper_id, [])
+        evidence_text = (
+            first_evidence[0].claim if first_evidence else _first_sentence(paper.abstract)
+        )
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(index),
+                    _clip_table_text(paper.title, 90),
+                    str(paper.year),
+                    paper.source,
+                    _clip_table_text(evidence_text, 130),
+                    paper.url,
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 可追溯性",
+            "",
+            f"- 完整文献调研报告：`{state.get('report_path', '')}`",
+            f"- 调研过程记录：`{state.get('process_path', '') or '未生成'}`",
+            f"- Trace：`{state.get('trace_path', '') or '见 data/runtime 目录'}`",
+            f"- LLM provider：`{state.get('llm_provider', 'off')}`；LLM used：`{str(state.get('llm_used', False)).lower()}`",
+        ]
+    )
+    llm_fallback_reason = state.get("llm_fallback_reason", "")
+    if llm_fallback_reason:
+        lines.append(f"- LLM fallback：{_sanitize_secret_text(llm_fallback_reason)}")
+    if claims:
+        lines.extend(["", "## Claim-Evidence 索引", "", "| Claim | Evidence IDs |", "| --- | --- |"])
+        for claim in claims:
+            evidence_ids = ", ".join(f"`{item}`" for item in claim.evidence_ids) or "None"
+            lines.append(f"| {_clip_table_text(claim.claim_text, 150)} | {evidence_ids} |")
+
+    return "\n".join(lines) + "\n"
+
+
 def render_process_markdown(state: dict[str, Any]) -> str:
     """Render an auditable process log without exposing hidden model reasoning."""
 
@@ -258,6 +474,7 @@ def render_process_markdown(state: dict[str, Any]) -> str:
         f"- Actual source: `{state.get('actual_source', '')}`",
         f"- Fallback reason: {_sanitize_secret_text(state.get('fallback_reason', '') or 'None')}",
         f"- Report path: `{state.get('report_path', '')}`",
+        f"- Summary path: `{state.get('summary_path', '') or 'None'}`",
         f"- Graph runtime: `{state.get('graph_runtime', '')}`",
         f"- LLM provider: `{state.get('llm_provider', 'off')}`",
         f"- LLM used: `{str(state.get('llm_used', False)).lower()}`",

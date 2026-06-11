@@ -19,7 +19,7 @@ from .llm import LLMError, build_llm_client
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, ResearchResult
 from .offline_data import OFFLINE_PAPERS
 from .planner import plan_queries, topic_terms
-from .report import render_process_markdown, render_report
+from .report import render_process_markdown, render_report, render_summary_report
 from .state import ResearchState
 from .tools import (
     ArxivSearchError,
@@ -709,6 +709,7 @@ def run_research(
     top_k: int = 5,
     source: str = "offline",
     output: str | None = None,
+    summary_output: str | None = None,
     process_output: str | None = None,
     offline: bool = False,
     write_trace: bool = True,
@@ -728,6 +729,7 @@ def run_research(
         "top_k": top_k,
         "requested_source": requested_source,
         "output_path": output,
+        "summary_output_path": summary_output,
         "process_output_path": process_output,
         "write_trace": write_trace,
         "llm_provider": llm,
@@ -755,8 +757,19 @@ def run_research(
     process_path: Path | None = None
     if process_output:
         process_path = Path(process_output)
-        process_path.parent.mkdir(parents=True, exist_ok=True)
         final_state["process_path"] = str(process_path)
+
+    summary_path: Path | None = None
+    if summary_output:
+        summary_path = Path(summary_output)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        final_state["summary_path"] = str(summary_path)
+        summary_markdown = render_summary_report(final_state)
+        final_state["summary_markdown"] = summary_markdown
+        summary_path.write_text(summary_markdown, encoding="utf-8")
+
+    if process_path:
+        process_path.parent.mkdir(parents=True, exist_ok=True)
         process_path.write_text(render_process_markdown(final_state), encoding="utf-8")
 
     trace_path: Path | None = None
@@ -778,6 +791,7 @@ def run_research(
                 "node_trace": _serialize(final_state.get("node_trace", [])),
                 "errors": _serialize(final_state.get("errors", [])),
                 "process_path": str(process_path) if process_path else None,
+                "summary_path": str(summary_path) if summary_path else None,
                 "metrics": metrics,
             },
         )
@@ -789,6 +803,7 @@ def run_research(
         report_path=final_state["report_path"],
         trace_path=str(trace_path) if trace_path else None,
         process_path=str(process_path) if process_path else None,
+        summary_path=str(summary_path) if summary_path else None,
         metrics=metrics,
     )
 

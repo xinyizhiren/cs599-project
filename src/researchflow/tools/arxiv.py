@@ -105,12 +105,18 @@ def build_arxiv_query_url(query: str, limit: int = 20) -> str:
 
     terms = re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", clean_query)
     search_terms = [term for term in terms if len(term) > 2][:8]
-    search_query = " AND ".join(f"all:{term}" for term in search_terms) or f'all:"{clean_query}"'
+    normalized = clean_query.lower()
+    if "retrieval augmented generation" in normalized or "retrieval-augmented generation" in normalized:
+        search_query = 'all:"retrieval augmented generation" OR all:"retrieval-augmented generation" OR all:RAG'
+    else:
+        # arXiv can be slow or return no results for long all:term AND chains.
+        # Prefer broad recall here and let the local ranker perform precision filtering.
+        search_query = " OR ".join(f"all:{term}" for term in search_terms[:6]) or f'all:"{clean_query}"'
     params = {
         "search_query": search_query,
         "start": "0",
         "max_results": str(max(1, min(limit, 50))),
-        "sortBy": "submittedDate",
+        "sortBy": "relevance",
         "sortOrder": "descending",
     }
     return f"{ARXIV_API_URL}?{urllib.parse.urlencode(params)}"

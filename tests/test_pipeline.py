@@ -7,12 +7,14 @@ from researchflow.pipeline import build_research_lens, rank_papers, run_research
 
 def test_run_research_offline_generates_report() -> None:
     output = Path("tmp/test_outputs/pipeline-report.md")
+    summary_output = Path("tmp/test_outputs/pipeline-summary.md")
     process_output = Path("tmp/test_outputs/pipeline-process.md")
 
     result = run_research(
         "Agentic RAG for enterprise knowledge management",
         top_k=3,
         output=str(output),
+        summary_output=str(summary_output),
         process_output=str(process_output),
         offline=True,
         write_trace=False,
@@ -28,11 +30,18 @@ def test_run_research_offline_generates_report() -> None:
     assert result.metrics["evidence_count"] == 6
     assert result.metrics["overall_score"] > 80
     assert result.metrics["claim_evidence_coverage"] == 1.0
+    assert result.summary_path == str(summary_output)
+    summary = summary_output.read_text(encoding="utf-8")
+    assert "领域调研总结" in summary
+    assert "关键发现" in summary
+    assert "证据来源" in summary
+    assert "### P1." not in summary
     assert result.process_path == str(process_output)
     process = process_output.read_text(encoding="utf-8")
     assert "Research Process" in process
     assert "Query Plan" in process
     assert "Evidence Extraction" in process
+    assert "Summary path" in process
     assert "DEEPSEEK_API_KEY" not in process
     assert re.search(r"sk-[A-Za-z0-9]{16,}", process) is None
 

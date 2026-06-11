@@ -17,6 +17,7 @@ def test_run_research_writes_trace_with_node_steps() -> None:
 
     assert result.trace_path is not None
     assert Path(result.trace_path).exists()
+    assert "summary_path" in result.to_dict()
     assert result.metrics["graph_runtime"] in {
         "sequential",
         "sequential_fallback",

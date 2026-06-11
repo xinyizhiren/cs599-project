@@ -15,8 +15,10 @@ class ResearchState(TypedDict, total=False):
     actual_source: str
     fallback_reason: str
     output_path: str | None
+    summary_output_path: str | None
     process_output_path: str | None
     process_path: str
+    summary_path: str
     write_trace: bool
     llm_provider: str
     llm_used: bool
@@ -30,6 +32,7 @@ class ResearchState(TypedDict, total=False):
     citation_checks: list[CitationCheck]
     report_markdown: str
     report_path: str
+    summary_markdown: str
     metrics: dict[str, Any]
     errors: list[dict[str, Any]]
     node_trace: list[dict[str, Any]]

@@ -23,6 +23,7 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --top-k | int | 否 | 5 | 最终选择论文数量 |
 | --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、hybrid |
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
+| --summary-output | path | 否 | 无 | 最终综合总结 Markdown 输出路径 |
 | --process-output | path | 否 | 无 | 调研过程记录 Markdown 输出路径 |
 | --offline | bool | 否 | false | 是否使用离线样例数据 |
 | --require-live | bool | 否 | false | 联网源 fallback 到 offline 时返回失败 |
@@ -36,6 +37,7 @@ Task ID: 20260605-agentic-rag
 Status: success
 Selected Papers: 5
 Report: examples/reports/agentic_rag.md
+Summary: docs/generated_reports/rag_final_summary.md
 Process: docs/generated_reports/rag_live_research_process.md
 Trace: data/runtime/20260605-agentic-rag/trace.json
 ```
@@ -98,6 +100,7 @@ def run_research(
     top_k: int = 5,
     source: str = "offline",
     output: str | None = None,
+    summary_output: str | None = None,
     process_output: str | None = None,
     offline: bool = False,
     llm: str = "off",
@@ -114,6 +117,7 @@ class ResearchResult(BaseModel):
     status: str
     selected_papers: list[PaperRecord]
     report_path: str
+    summary_path: str | None
     process_path: str | None
     metrics: dict
 ```

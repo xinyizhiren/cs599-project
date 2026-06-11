@@ -29,6 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Markdown process log output path.",
     )
+    run_parser.add_argument(
+        "--summary-output",
+        default=None,
+        help="Markdown final synthesis summary output path.",
+    )
     run_parser.add_argument("--offline", action="store_true", help="Force offline fixture mode.")
     run_parser.add_argument(
         "--require-live",
@@ -69,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
             top_k=args.top_k,
             source=args.source,
             output=args.output,
+            summary_output=args.summary_output,
             process_output=args.process_output,
             offline=args.offline or args.source == "offline",
             write_trace=args.trace,
@@ -79,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Status: {result.status}")
         print(f"Selected Papers: {len(result.selected_papers)}")
         print(f"Report: {result.report_path}")
+        if result.summary_path:
+            print(f"Summary: {result.summary_path}")
         if result.process_path:
             print(f"Process: {result.process_path}")
         if result.trace_path:
