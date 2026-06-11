@@ -5,7 +5,7 @@
   "average_score": 100.0,
   "results": [
     {
-      "task_id": "20260611042419-agentic-rag-for-enterprise-knowl",
+      "task_id": "20260611062319-agentic-rag-for-enterprise-knowl",
       "status": "success",
       "selected_papers": [
         {
@@ -94,6 +94,9 @@
         "query_count": 5,
         "searched_paper_count": 6,
         "selected_paper_count": 5,
+        "candidate_limit": 40,
+        "candidate_multiplier": 8,
+        "from_year": 2020,
         "evidence_count": 10,
         "claim_count": 2,
         "citation_check_count": 5,
@@ -109,6 +112,11 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "llm_chunk_count": 0,
+        "earliest_candidate_year": 2024,
+        "latest_candidate_year": 2026,
+        "recent_3_year_ratio": 1.0,
+        "recent_5_year_ratio": 1.0,
         "research_lens_coverage": 0.714,
         "graph_runtime": "sequential",
         "dimension_scores": {
@@ -127,7 +135,7 @@
       "topic": "Agentic RAG for enterprise knowledge management"
     },
     {
-      "task_id": "20260611042419-multi-agent-collaboration-in-llm",
+      "task_id": "20260611062319-multi-agent-collaboration-in-llm",
       "status": "success",
       "selected_papers": [
         {
@@ -216,6 +224,9 @@
         "query_count": 5,
         "searched_paper_count": 6,
         "selected_paper_count": 5,
+        "candidate_limit": 40,
+        "candidate_multiplier": 8,
+        "from_year": 2020,
         "evidence_count": 10,
         "claim_count": 2,
         "citation_check_count": 5,
@@ -231,6 +242,11 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "llm_chunk_count": 0,
+        "earliest_candidate_year": 2024,
+        "latest_candidate_year": 2026,
+        "recent_3_year_ratio": 1.0,
+        "recent_5_year_ratio": 1.0,
         "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
@@ -249,7 +265,7 @@
       "topic": "Multi-agent collaboration in LLM systems"
     },
     {
-      "task_id": "20260611042419-llm-agents-for-software-engineer",
+      "task_id": "20260611062319-llm-agents-for-software-engineer",
       "status": "success",
       "selected_papers": [
         {
@@ -338,6 +354,9 @@
         "query_count": 5,
         "searched_paper_count": 6,
         "selected_paper_count": 5,
+        "candidate_limit": 40,
+        "candidate_multiplier": 8,
+        "from_year": 2020,
         "evidence_count": 10,
         "claim_count": 2,
         "citation_check_count": 5,
@@ -353,6 +372,11 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "llm_chunk_count": 0,
+        "earliest_candidate_year": 2024,
+        "latest_candidate_year": 2026,
+        "recent_3_year_ratio": 1.0,
+        "recent_5_year_ratio": 1.0,
         "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
@@ -371,7 +395,7 @@
       "topic": "LLM agents for software engineering"
     },
     {
-      "task_id": "20260611042419-citation-hallucination-detection",
+      "task_id": "20260611062319-citation-hallucination-detection",
       "status": "success",
       "selected_papers": [
         {
@@ -460,6 +484,9 @@
         "query_count": 5,
         "searched_paper_count": 6,
         "selected_paper_count": 5,
+        "candidate_limit": 40,
+        "candidate_multiplier": 8,
+        "from_year": 2020,
         "evidence_count": 10,
         "claim_count": 2,
         "citation_check_count": 5,
@@ -475,6 +502,11 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "llm_chunk_count": 0,
+        "earliest_candidate_year": 2024,
+        "latest_candidate_year": 2026,
+        "recent_3_year_ratio": 1.0,
+        "recent_5_year_ratio": 1.0,
         "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {
@@ -493,7 +525,7 @@
       "topic": "Citation hallucination detection in scientific writing"
     },
     {
-      "task_id": "20260611042419-long-term-memory-mechanisms-for",
+      "task_id": "20260611062319-long-term-memory-mechanisms-for",
       "status": "success",
       "selected_papers": [
         {
@@ -582,6 +614,9 @@
         "query_count": 5,
         "searched_paper_count": 6,
         "selected_paper_count": 5,
+        "candidate_limit": 40,
+        "candidate_multiplier": 8,
+        "from_year": 2020,
         "evidence_count": 10,
         "claim_count": 2,
         "citation_check_count": 5,
@@ -597,6 +632,11 @@
         "llm_provider": "off",
         "llm_used": false,
         "llm_fallback_reason": "LLM provider is disabled.",
+        "llm_chunk_count": 0,
+        "earliest_candidate_year": 2024,
+        "latest_candidate_year": 2026,
+        "recent_3_year_ratio": 1.0,
+        "recent_5_year_ratio": 1.0,
         "research_lens_coverage": 0.0,
         "graph_runtime": "sequential",
         "dimension_scores": {

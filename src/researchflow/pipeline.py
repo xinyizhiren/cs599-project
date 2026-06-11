@@ -122,6 +122,9 @@ RAG_LENS_DIMENSIONS: dict[str, tuple[str, ...]] = {
         "application",
     ),
 }
+DEFAULT_CANDIDATE_MULTIPLIER = 8
+DEFAULT_FROM_YEAR = 2020
+DEFAULT_LLM_BATCH_CHARS = 9000
 
 
 def slugify(value: str, max_length: int = 48) -> str:
@@ -181,6 +184,30 @@ def search_offline(topic: str, limit: int = 20) -> list[PaperRecord]:
         scored.append(clone)
     scored.sort(key=lambda item: (item.score, item.year, item.citation_count), reverse=True)
     return scored[:limit]
+
+
+def normalize_from_year(from_year: int | None) -> int | None:
+    if from_year is None or from_year <= 0:
+        return None
+    return from_year
+
+
+def candidate_limit_for(top_k: int, candidate_multiplier: int, max_candidates: int | None) -> int:
+    if max_candidates is not None and max_candidates > 0:
+        return max(top_k, max_candidates)
+    multiplier = max(1, candidate_multiplier)
+    return max(top_k, min(200, top_k * multiplier))
+
+
+def filter_papers_by_year(papers: list[PaperRecord], from_year: int | None) -> list[PaperRecord]:
+    normalized_year = normalize_from_year(from_year)
+    if normalized_year is None:
+        return papers
+    return [
+        paper
+        for paper in papers
+        if not paper.year or paper.year >= normalized_year
+    ]
 
 
 def dedupe_papers(papers: list[PaperRecord]) -> list[PaperRecord]:
@@ -266,6 +293,10 @@ def search_source(
 
 
 def rank_papers(papers: list[PaperRecord], topic: str, top_k: int) -> list[PaperRecord]:
+    return rank_all_papers(papers, topic)[:top_k]
+
+
+def rank_all_papers(papers: list[PaperRecord], topic: str) -> list[PaperRecord]:
     terms = topic_terms(topic)
     seen: set[str] = set()
     ranked: list[PaperRecord] = []
@@ -279,9 +310,37 @@ def rank_papers(papers: list[PaperRecord], topic: str, top_k: int) -> list[Paper
         seen.add(paper.paper_id)
         paper.score = score_paper(paper, terms, topic=topic)
         ranked.append(paper)
-        if len(ranked) >= top_k:
-            break
     return ranked
+
+
+def build_temporal_profile(papers: list[PaperRecord]) -> dict[str, Any]:
+    years = [paper.year for paper in papers if paper.year > 0]
+    if not years:
+        return {
+            "year_counts": {},
+            "earliest_year": None,
+            "latest_year": None,
+            "last_3_year_count": 0,
+            "last_5_year_count": 0,
+            "last_3_year_ratio": 0.0,
+            "last_5_year_ratio": 0.0,
+        }
+
+    current_year = datetime.now(UTC).year
+    year_counts: dict[int, int] = {}
+    for year in years:
+        year_counts[year] = year_counts.get(year, 0) + 1
+    last_3_year_count = sum(1 for year in years if year >= current_year - 2)
+    last_5_year_count = sum(1 for year in years if year >= current_year - 4)
+    return {
+        "year_counts": dict(sorted(year_counts.items())),
+        "earliest_year": min(years),
+        "latest_year": max(years),
+        "last_3_year_count": last_3_year_count,
+        "last_5_year_count": last_5_year_count,
+        "last_3_year_ratio": round(last_3_year_count / len(years), 3),
+        "last_5_year_ratio": round(last_5_year_count / len(years), 3),
+    }
 
 
 def classify_lens_dimensions(paper: PaperRecord) -> list[str]:
@@ -331,6 +390,29 @@ def build_research_lens(topic: str, papers: list[PaperRecord]) -> dict[str, Any]
     }
 
 
+def build_corpus_profile(
+    topic: str,
+    candidate_papers: list[PaperRecord],
+    selected_papers: list[PaperRecord],
+    from_year: int | None,
+) -> dict[str, Any]:
+    return {
+        "candidate_count": len(candidate_papers),
+        "selected_count": len(selected_papers),
+        "from_year": normalize_from_year(from_year),
+        "temporal_profile": build_temporal_profile(candidate_papers),
+        "candidate_lens": build_research_lens(topic, candidate_papers),
+        "selected_lens": build_research_lens(topic, selected_papers),
+        "compression_strategy": [
+            "Retrieve a broad candidate pool before ranking.",
+            "Use temporal profiling to expose whether the review is recent enough.",
+            "Map the candidate pool to domain dimensions before writing conclusions.",
+            "Extract evidence from selected papers in LLM-sized batches.",
+            "Keep claim-evidence-citation links as the auditable final surface.",
+        ],
+    }
+
+
 def extract_evidence(papers: list[PaperRecord]) -> list[EvidenceItem]:
     evidence_items: list[EvidenceItem] = []
     for paper_index, paper in enumerate(papers, start=1):
@@ -369,32 +451,53 @@ def _clamp_confidence(value: Any) -> float:
     return max(0.0, min(1.0, confidence))
 
 
-def extract_evidence_with_llm(papers: list[PaperRecord], provider: str) -> list[EvidenceItem]:
-    client = build_llm_client(provider)
-    paper_payload = [
-        {
+def _paper_payload(paper: PaperRecord) -> dict[str, Any]:
+    return {
             "paper_id": paper.paper_id,
             "title": paper.title,
             "authors": paper.authors,
             "year": paper.year,
             "abstract": paper.abstract,
-        }
-        for paper in papers
-    ]
-    system_prompt = (
-        "You extract evidence for a literature review agent. Return only a JSON object "
-        "with key evidence_items. Each item must use a paper_id from the input and include "
-        "category, claim, support_text, and confidence. Use categories contribution, method, "
-        "experiment, limitation, or future_work. Do not invent papers or references."
-    )
-    payload = client.generate_json(system_prompt, {"papers": paper_payload})
-    raw_items = payload.get("evidence_items")
+    }
+
+
+def chunk_papers_for_llm(
+    papers: list[PaperRecord],
+    max_batch_chars: int = DEFAULT_LLM_BATCH_CHARS,
+) -> list[list[PaperRecord]]:
+    """Split papers into prompt-sized batches to avoid context window pressure."""
+
+    if not papers:
+        return []
+    batches: list[list[PaperRecord]] = []
+    current: list[PaperRecord] = []
+    current_chars = 0
+    budget = max(1200, max_batch_chars)
+
+    for paper in papers:
+        estimated_chars = len(paper.title) + len(paper.abstract) + 160
+        if current and current_chars + estimated_chars > budget:
+            batches.append(current)
+            current = []
+            current_chars = 0
+        current.append(paper)
+        current_chars += estimated_chars
+
+    if current:
+        batches.append(current)
+    return batches
+
+
+def _parse_llm_evidence_items(
+    raw_items: Any,
+    papers: list[PaperRecord],
+    counters: dict[str, int],
+) -> list[EvidenceItem]:
     if not isinstance(raw_items, list):
         raise LLMError("LLM JSON missing evidence_items list.")
 
     allowed_papers = {paper.paper_id for paper in papers}
     evidence_items: list[EvidenceItem] = []
-    counters: dict[str, int] = {}
     for raw in raw_items:
         if not isinstance(raw, dict):
             continue
@@ -417,10 +520,40 @@ def extract_evidence_with_llm(papers: list[PaperRecord], provider: str) -> list[
                 confidence=_clamp_confidence(raw.get("confidence", 0.72)),
             )
         )
+    return evidence_items
+
+
+def extract_evidence_with_llm(
+    papers: list[PaperRecord],
+    provider: str,
+    max_batch_chars: int = DEFAULT_LLM_BATCH_CHARS,
+) -> tuple[list[EvidenceItem], int]:
+    client = build_llm_client(provider)
+    system_prompt = (
+        "You extract evidence for a literature review agent. Return only a JSON object "
+        "with key evidence_items. Each item must use a paper_id from the input and include "
+        "category, claim, support_text, and confidence. Use categories contribution, method, "
+        "experiment, limitation, or future_work. Do not invent papers or references."
+    )
+    evidence_items: list[EvidenceItem] = []
+    counters: dict[str, int] = {}
+    batches = chunk_papers_for_llm(papers, max_batch_chars=max_batch_chars)
+    for batch_index, batch in enumerate(batches, start=1):
+        payload = client.generate_json(
+            system_prompt,
+            {
+                "batch_index": batch_index,
+                "batch_count": len(batches),
+                "papers": [_paper_payload(paper) for paper in batch],
+            },
+        )
+        evidence_items.extend(
+            _parse_llm_evidence_items(payload.get("evidence_items"), batch, counters)
+        )
 
     if not evidence_items:
         raise LLMError("LLM did not produce usable evidence items.")
-    return evidence_items
+    return evidence_items, len(batches)
 
 
 def polish_background_with_llm(
@@ -588,28 +721,41 @@ def node_plan_queries(state: ResearchState) -> dict[str, Any]:
 
 
 def node_search_papers(state: ResearchState) -> dict[str, Any]:
-    searched_papers, actual_source, fallback_reason = search_source(
+    raw_papers, actual_source, fallback_reason = search_source(
         topic=state["topic"],
         query_plan=state["query_plan"],
         source=state["requested_source"],
-        limit=max(int(state["top_k"]) * 4, 10),
+        limit=int(state.get("candidate_limit", max(int(state["top_k"]) * 4, 10))),
     )
+    searched_papers = filter_papers_by_year(raw_papers, state.get("from_year"))
+    if raw_papers and not searched_papers:
+        searched_papers = raw_papers
+        year_note = (
+            f"Year filter from_year={state.get('from_year')} removed all candidates; "
+            "unfiltered candidates were kept."
+        )
+        fallback_reason = f"{fallback_reason}; {year_note}" if fallback_reason else year_note
     return {
         "searched_papers": searched_papers,
         "actual_source": actual_source,
         "fallback_reason": fallback_reason or "",
+        "temporal_profile": build_temporal_profile(searched_papers),
     }
 
 
 def node_rank_papers(state: ResearchState) -> dict[str, Any]:
-    selected_papers = rank_papers(
-        state["searched_papers"],
-        state["topic"],
-        top_k=int(state["top_k"]),
-    )
+    ranked_candidates = rank_all_papers(state["searched_papers"], state["topic"])
+    selected_papers = ranked_candidates[: int(state["top_k"])]
     return {
+        "ranked_candidates": ranked_candidates,
         "selected_papers": selected_papers,
         "research_lens": build_research_lens(state["topic"], selected_papers),
+        "corpus_profile": build_corpus_profile(
+            state["topic"],
+            ranked_candidates,
+            selected_papers,
+            state.get("from_year"),
+        ),
     }
 
 
@@ -617,22 +763,26 @@ def node_extract_evidence(state: ResearchState) -> dict[str, Any]:
     provider = state.get("llm_provider", "off")
     if provider == "deepseek":
         try:
+            evidence_items, chunk_count = extract_evidence_with_llm(
+                state["selected_papers"],
+                provider=provider,
+            )
             return {
-                "evidence_items": extract_evidence_with_llm(
-                    state["selected_papers"],
-                    provider=provider,
-                ),
+                "evidence_items": evidence_items,
+                "llm_chunk_count": chunk_count,
                 "llm_used": True,
                 "llm_fallback_reason": "",
             }
         except LLMError as exc:
             return {
                 "evidence_items": extract_evidence(state["selected_papers"]),
+                "llm_chunk_count": 0,
                 "llm_used": False,
                 "llm_fallback_reason": str(exc),
             }
     return {
         "evidence_items": extract_evidence(state["selected_papers"]),
+        "llm_chunk_count": 0,
         "llm_used": False,
         "llm_fallback_reason": "LLM provider is disabled.",
     }
@@ -715,6 +865,9 @@ def run_research(
     write_trace: bool = True,
     llm: str = "off",
     require_live: bool = False,
+    candidate_multiplier: int = DEFAULT_CANDIDATE_MULTIPLIER,
+    max_candidates: int | None = None,
+    from_year: int | None = DEFAULT_FROM_YEAR,
 ) -> ResearchResult:
     if not topic.strip():
         raise ValueError("Research topic cannot be empty.")
@@ -723,10 +876,15 @@ def run_research(
 
     task_id = make_task_id(topic)
     requested_source = "offline" if offline else source.replace("-", "_")
+    candidate_limit = candidate_limit_for(top_k, candidate_multiplier, max_candidates)
+    normalized_from_year = normalize_from_year(from_year)
     initial_state: ResearchState = {
         "task_id": task_id,
         "topic": topic.strip(),
         "top_k": top_k,
+        "candidate_multiplier": max(1, candidate_multiplier),
+        "candidate_limit": candidate_limit,
+        "from_year": normalized_from_year,
         "requested_source": requested_source,
         "output_path": output,
         "summary_output_path": summary_output,
@@ -783,8 +941,11 @@ def run_research(
                 "graph_runtime": final_state.get("graph_runtime", ""),
                 "query_plan": _serialize(final_state.get("query_plan", [])),
                 "searched_papers": _serialize(final_state.get("searched_papers", [])),
+                "ranked_candidates": _serialize(final_state.get("ranked_candidates", [])),
                 "selected_papers": _serialize(final_state.get("selected_papers", [])),
                 "research_lens": _serialize(final_state.get("research_lens", {})),
+                "corpus_profile": _serialize(final_state.get("corpus_profile", {})),
+                "temporal_profile": _serialize(final_state.get("temporal_profile", {})),
                 "evidence_items": _serialize(final_state.get("evidence_items", [])),
                 "claims": _serialize(final_state.get("claims", [])),
                 "citation_checks": _serialize(final_state.get("citation_checks", [])),
@@ -825,6 +986,11 @@ def evaluate_benchmark(
             source=task.get("source", "offline"),
             offline=bool(task.get("offline", task.get("source", "offline") == "offline")),
             llm=task.get("llm", "off"),
+            candidate_multiplier=int(
+                task.get("candidate_multiplier", DEFAULT_CANDIDATE_MULTIPLIER)
+            ),
+            max_candidates=task.get("max_candidates"),
+            from_year=task.get("from_year", DEFAULT_FROM_YEAR),
             write_trace=False,
         )
         result_payload = result.to_dict()

@@ -21,6 +21,9 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --- | --- | --- | --- | --- |
 | topic | string | 是 | 无 | 研究主题 |
 | --top-k | int | 否 | 5 | 最终选择论文数量 |
+| --candidate-multiplier | int | 否 | 8 | 候选池规模倍数，候选池约为 top_k * multiplier |
+| --max-candidates | int | 否 | 无 | 显式候选池上限，优先级高于 candidate multiplier |
+| --from-year | int | 否 | 2020 | 候选论文起始年份；设为 0 可关闭年份过滤 |
 | --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、hybrid |
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
 | --summary-output | path | 否 | 无 | 最终综合总结 Markdown 输出路径 |
@@ -105,6 +108,9 @@ def run_research(
     offline: bool = False,
     llm: str = "off",
     require_live: bool = False,
+    candidate_multiplier: int = 8,
+    max_candidates: int | None = None,
+    from_year: int | None = 2020,
 ) -> ResearchResult:
     ...
 ```
@@ -337,7 +343,15 @@ def write_report(
 | llm_provider | off / deepseek |
 | llm_used | 是否实际使用 LLM 输出 |
 | llm_fallback_reason | LLM 降级原因 |
+| llm_chunk_count | LLM 证据抽取批次数，用于观察上下文窗口分批策略 |
 | research_lens_coverage | RAG Research Lens 维度覆盖率 |
+| candidate_limit | 候选池目标规模 |
+| candidate_multiplier | 候选池规模倍数 |
+| from_year | 年份过滤起点 |
+| earliest_candidate_year | 候选池最早年份 |
+| latest_candidate_year | 候选池最新年份 |
+| recent_3_year_ratio | 近三年候选论文占比 |
+| recent_5_year_ratio | 近五年候选论文占比 |
 
 ## 9. 兼容性计划
 

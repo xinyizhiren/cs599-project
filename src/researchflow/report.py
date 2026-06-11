@@ -271,6 +271,14 @@ def _dominant_dimensions(research_lens: dict[str, Any]) -> list[tuple[str, int]]
     )
 
 
+def _format_year_range(temporal_profile: dict[str, Any]) -> str:
+    earliest = temporal_profile.get("earliest_year")
+    latest = temporal_profile.get("latest_year")
+    if earliest is None or latest is None:
+        return "unknown"
+    return f"{earliest}-{latest}"
+
+
 def render_summary_report(state: dict[str, Any]) -> str:
     """Render a synthesis-first report that reduces reading cost."""
 
@@ -281,6 +289,9 @@ def render_summary_report(state: dict[str, Any]) -> str:
     citation_checks: list[CitationCheck] = state.get("citation_checks", [])
     metrics = state.get("metrics", {})
     research_lens = state.get("research_lens", {})
+    corpus_profile = state.get("corpus_profile", {})
+    temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {})
+    candidate_count = int(corpus_profile.get("candidate_count", len(state.get("searched_papers", []))))
     generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     dominant_dimensions = _dominant_dimensions(research_lens)
@@ -297,7 +308,9 @@ def render_summary_report(state: dict[str, Any]) -> str:
         "",
         f"- 生成时间：{generated_at}",
         f"- 联网来源：`{state.get('actual_source', 'unknown')}`",
+        f"- 候选文献池：{candidate_count}",
         f"- 核心文献数：{len(selected_papers)}",
+        f"- 时间范围：{_format_year_range(temporal_profile)}",
         f"- 引用校验通过率：{citation_rate:.3f}",
         f"- Claim-Evidence 覆盖率：{evidence_coverage:.3f}",
         "",
@@ -359,6 +372,39 @@ def render_summary_report(state: dict[str, Any]) -> str:
                 "",
                 f"Lens coverage: {float(research_lens.get('coverage', 0.0)):.3f}；"
                 f"缺失方向：{missing_text}。",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 信息规模与时间窗口",
+            "",
+            (
+                f"本次调研先从候选池中收集 {candidate_count} 篇文献，再筛选 "
+                f"{len(selected_papers)} 篇进入细读证据层。候选池年份范围为 "
+                f"{_format_year_range(temporal_profile)}；近三年占比 "
+                f"{float(temporal_profile.get('last_3_year_ratio', 0.0)):.3f}，"
+                f"近五年占比 {float(temporal_profile.get('last_5_year_ratio', 0.0)):.3f}。"
+            ),
+            "",
+            "| 年份 | 候选论文数 |",
+            "| ---: | ---: |",
+        ]
+    )
+    for year, count in temporal_profile.get("year_counts", {}).items():
+        lines.append(f"| {year} | {count} |")
+
+    strategies = corpus_profile.get("compression_strategy", [])
+    if strategies:
+        lines.extend(["", "## 上下文压缩策略", ""])
+        lines.extend(
+            [
+                "- 先用较大的候选池建立领域覆盖图，而不是直接让模型读取全部论文。",
+                "- 用年份分布判断材料是否足够新，避免只总结过时资料或只看最新短期噪声。",
+                "- 用 Research Lens 将候选文献映射到综述、检索、生成、评测、安全、结构化和应用等方向。",
+                "- 只把筛选后的核心文献送入 Evidence Ledger，LLM 按批次抽取证据，避免上下文窗口溢出。",
+                "- 最终总结只引用可追溯 evidence_id 和真实论文 URL，降低幻觉引用风险。",
             ]
         )
 
@@ -457,6 +503,8 @@ def render_process_markdown(state: dict[str, Any]) -> str:
     citation_checks = state.get("citation_checks", [])
     node_trace = state.get("node_trace", [])
     research_lens = state.get("research_lens", {})
+    temporal_profile = state.get("temporal_profile", {})
+    corpus_profile = state.get("corpus_profile", {})
 
     source_counts: dict[str, int] = defaultdict(int)
     for paper in searched_papers:
@@ -472,12 +520,16 @@ def render_process_markdown(state: dict[str, Any]) -> str:
         f"- Task ID: `{state.get('task_id', '')}`",
         f"- Requested source: `{state.get('requested_source', '')}`",
         f"- Actual source: `{state.get('actual_source', '')}`",
+        f"- Candidate limit: `{state.get('candidate_limit', '')}`",
+        f"- Candidate multiplier: `{state.get('candidate_multiplier', '')}`",
+        f"- From year: `{state.get('from_year', '') or 'None'}`",
         f"- Fallback reason: {_sanitize_secret_text(state.get('fallback_reason', '') or 'None')}",
         f"- Report path: `{state.get('report_path', '')}`",
         f"- Summary path: `{state.get('summary_path', '') or 'None'}`",
         f"- Graph runtime: `{state.get('graph_runtime', '')}`",
         f"- LLM provider: `{state.get('llm_provider', 'off')}`",
         f"- LLM used: `{str(state.get('llm_used', False)).lower()}`",
+        f"- LLM chunk count: `{state.get('llm_chunk_count', 0)}`",
         f"- LLM fallback reason: {_sanitize_secret_text(state.get('llm_fallback_reason', '') or 'None')}",
         "",
         "## Query Plan",
@@ -506,6 +558,23 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             "- Candidate source counts: "
             + ", ".join(f"{source}={count}" for source, count in sorted(source_counts.items()))
         )
+    if temporal_profile:
+        lines.extend(
+            [
+                f"- Candidate year range: {_format_year_range(temporal_profile)}",
+                f"- Last 3 year ratio: {float(temporal_profile.get('last_3_year_ratio', 0.0)):.3f}",
+                f"- Last 5 year ratio: {float(temporal_profile.get('last_5_year_ratio', 0.0)):.3f}",
+                "",
+                "| Year | Candidate Count |",
+                "| ---: | ---: |",
+            ]
+        )
+        for year, count in temporal_profile.get("year_counts", {}).items():
+            lines.append(f"| {year} | {count} |")
+    if corpus_profile.get("compression_strategy"):
+        lines.extend(["", "## Information Compression Strategy", ""])
+        for strategy in corpus_profile["compression_strategy"]:
+            lines.append(f"- {strategy}")
     lines.extend(
         [
             "",

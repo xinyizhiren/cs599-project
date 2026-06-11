@@ -1,18 +1,20 @@
 # 领域调研总结：retrieval augmented generation for large language models
 
-- 生成时间：2026-06-11 05:55 UTC
+- 生成时间：2026-06-11 06:22 UTC
 - 联网来源：`arxiv`
-- 核心文献数：8
+- 候选文献池：50
+- 核心文献数：15
+- 时间范围：2022-2026
 - 引用校验通过率：1.000
 - Claim-Evidence 覆盖率：1.000
 
 ## 一句话结论
 
-围绕 `retrieval augmented generation for large language models`，当前更值得优先理解的不是单篇论文细节，而是 RAG 从“检索增强生成技巧”演进为一套可评测、可审计、需安全治理的系统工程方法；本次样本文献主要覆盖评测与基准、生成与事实约束、检索与索引、领域应用，待补充方向为：无明显缺口。
+围绕 `retrieval augmented generation for large language models`，当前更值得优先理解的不是单篇论文细节，而是 RAG 从“检索增强生成技巧”演进为一套可评测、可审计、需安全治理的系统工程方法；本次样本文献主要覆盖评测与基准、生成与事实约束、检索与索引、图结构与结构化 RAG，待补充方向为：无明显缺口。
 
 ## 关键发现
 
-- Agent 从真实开放学术源中检索并筛选了 8 篇核心文献，最终总结只保留结论、脉络和证据入口，降低逐篇阅读成本。
+- Agent 从真实开放学术源中检索并筛选了 15 篇核心文献，最终总结只保留结论、脉络和证据入口，降低逐篇阅读成本。
 - RAG 的主线已经从“把文档塞进上下文”转向检索、重排、生成、事实约束、评测和安全的端到端设计。
 - 综述、评测和安全相关论文应优先阅读，因为它们决定领域地图、可靠性边界和落地风险。
 - Citation 与 evidence 绑定是本项目的关键约束：总结中的判断不直接脱离检索文献生成。
@@ -22,15 +24,35 @@
 
 | 方向 | 覆盖论文数 | 代表性文献 | 读者应关注的问题 |
 | --- | ---: | --- | --- |
-| 评测与基准 | 8 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 如何用可复现基准评估 RAG 的有效性。 |
-| 生成与事实约束 | 8 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 生成结果如何被上下文证据约束并减少幻觉。 |
-| 检索与索引 | 8 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 检索器、索引、chunk 与重排如何影响最终答案。 |
-| 领域应用 | 3 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 哪些场景已经接近工程应用，哪些只是案例验证。 |
-| 图结构与结构化 RAG | 3 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 何时需要图结构、知识图谱或因果结构增强。 |
+| 评测与基准 | 15 | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 如何用可复现基准评估 RAG 的有效性。 |
+| 生成与事实约束 | 15 | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 生成结果如何被上下文证据约束并减少幻觉。 |
+| 检索与索引 | 15 | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 检索器、索引、chunk 与重排如何影响最终答案。 |
+| 图结构与结构化 RAG | 8 | DA-RAG: Dynamic Attributed Community Search for Retrieval-Augmented Generation | 何时需要图结构、知识图谱或因果结构增强。 |
+| 领域应用 | 5 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 哪些场景已经接近工程应用，哪些只是案例验证。 |
+| 综述与分类 | 4 | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 先建立术语、分类和领域边界。 |
 | 安全与鲁棒性 | 2 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 如何处理投毒、隐私泄露和对抗样本风险。 |
-| 综述与分类 | 2 | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 先建立术语、分类和领域边界。 |
 
 Lens coverage: 1.000；缺失方向：无明显缺口。
+
+## 信息规模与时间窗口
+
+本次调研先从候选池中收集 50 篇文献，再筛选 15 篇进入细读证据层。候选池年份范围为 2022-2026；近三年占比 0.960，近五年占比 1.000。
+
+| 年份 | 候选论文数 |
+| ---: | ---: |
+| 2022 | 1 |
+| 2023 | 1 |
+| 2024 | 15 |
+| 2025 | 22 |
+| 2026 | 11 |
+
+## 上下文压缩策略
+
+- 先用较大的候选池建立领域覆盖图，而不是直接让模型读取全部论文。
+- 用年份分布判断材料是否足够新，避免只总结过时资料或只看最新短期噪声。
+- 用 Research Lens 将候选文献映射到综述、检索、生成、评测、安全、结构化和应用等方向。
+- 只把筛选后的核心文献送入 Evidence Ledger，LLM 按批次抽取证据，避免上下文窗口溢出。
+- 最终总结只引用可追溯 evidence_id 和真实论文 URL，降低幻觉引用风险。
 
 ## 当前共识
 
@@ -64,14 +86,21 @@ Lens coverage: 1.000；缺失方向：无明显缺口。
 
 | 序号 | 论文 | 年份 | 来源 | 关键证据摘要 | URL |
 | ---: | --- | ---: | --- | --- | --- |
-| 1 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 2025 | arxiv | Large models outperform smaller models in query semantics and response accuracy | http://arxiv.org/abs/2503.16581v1 |
-| 2 | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries | 2024 | arxiv | MultiHop-RAG dataset addresses lack of benchmarking for multi-hop queries | http://arxiv.org/abs/2401.15391v1 |
-| 3 | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 2025 | arxiv | Agentic RAG transcends traditional RAG by embedding autonomous AI agents | http://arxiv.org/abs/2501.09136v4 |
-| 4 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 2026 | arxiv | Bridge-RAG uses an abstract bridge tree and Cuckoo Filter for efficient retrieval | http://arxiv.org/abs/2603.26668v2 |
-| 5 | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation | 2025 | arxiv | FAIR-RAG uses Iterative Refinement Cycle with Structured Evidence Assessment | http://arxiv.org/abs/2510.22344v1 |
-| 6 | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance | 2025 | arxiv | RAG-Check framework evaluates reliability of multi-modal RAG with RS and CS scores | http://arxiv.org/abs/2501.03995v1 |
-| 7 | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation | 2026 | arxiv | MASS-RAG uses multiple role-specialized agents for evidence summarization, extraction, and reasoning | http://arxiv.org/abs/2604.18509v2 |
-| 8 | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conv... | 2026 | arxiv | SA-RAG uses tables as intermediate structured representation to reduce noise | http://arxiv.org/abs/2605.24366v1 |
+| 1 | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 2024 | arxiv | Auto-RAG is an autonomous iterative retrieval model that leverages LLM's decision-making to iteratively interact with the retri... | http://arxiv.org/abs/2411.19443v1 |
+| 2 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 2025 | arxiv | Investigates 13 open-source LLMs with RAG for Quranic studies. | http://arxiv.org/abs/2503.16581v1 |
+| 3 | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries | 2024 | arxiv | Develops MultiHop-RAG, a benchmark dataset for multi-hop queries in RAG. | http://arxiv.org/abs/2401.15391v1 |
+| 4 | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 2025 | arxiv | Provides a comprehensive survey and taxonomy of Agentic RAG systems. | http://arxiv.org/abs/2501.09136v4 |
+| 5 | DA-RAG: Dynamic Attributed Community Search for Retrieval-Augmented Generation | 2026 | arxiv | DA-RAG uses attributed community search to dynamically extract relevant subgraphs based on the query. | http://arxiv.org/abs/2602.08545v1 |
+| 6 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 2026 | arxiv | Bridge-RAG introduces abstract to bridge query entities and document chunks. | http://arxiv.org/abs/2603.26668v2 |
+| 7 | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation | 2025 | arxiv | FAIR-RAG transforms the standard RAG pipeline into a dynamic, evidence-driven reasoning process. | http://arxiv.org/abs/2510.22344v1 |
+| 8 | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance | 2025 | arxiv | RAG-Check is a framework to evaluate the reliability of multi-modal RAG using relevancy and correctness scores. | http://arxiv.org/abs/2501.03995v1 |
+| 9 | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation | 2026 | arxiv | MASS-RAG is a multi-agent synthesis approach that structures evidence processing into specialized agents. | http://arxiv.org/abs/2604.18509v2 |
+| 10 | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conv... | 2026 | arxiv | SA-RAG uses tables as an intermediate structured representation to reduce noise while preserving essential information. | http://arxiv.org/abs/2605.24366v1 |
+| 11 | FD-RAG: Federated Dual-System Retrieval-Augmented Generation | 2026 | arxiv | FD-RAG is a federated dual-system RAG framework that decouples memory access from LLM reasoning. | http://arxiv.org/abs/2605.27432v1 |
+| 12 | SPD-RAG: Sub-Agent Per Document Retrieval-Augmented Generation | 2026 | arxiv | SPD-RAG is a hierarchical multi-agent framework for exhaustive cross-document QA. | http://arxiv.org/abs/2603.08329v1 |
+| 13 | GFM-RAG: Graph Foundation Model for Retrieval Augmented Generation | 2025 | arxiv | GFM-RAG is the first graph foundation model for RAG applicable to unseen datasets without fine-tuning. | http://arxiv.org/abs/2502.01113v3 |
+| 14 | DyG-RAG: Dynamic Graph Retrieval-Augmented Generation with Event-Centric Reasoning | 2025 | arxiv | DyG-RAG is an event-centric dynamic graph RAG framework for temporal reasoning. | http://arxiv.org/abs/2507.13396v1 |
+| 15 | OmniBench-RAG: A Multi-Domain Evaluation Platform for Retrieval-Augmented Generation Tools | 2025 | arxiv | The platform quantifies performance gains across accuracy and efficiency dimensions, spanning nine knowledge fields including c... | http://arxiv.org/abs/2508.05650v1 |
 
 ## 可追溯性
 
@@ -84,5 +113,5 @@ Lens coverage: 1.000；缺失方向：无明显缺口。
 
 | Claim | Evidence IDs |
 | --- | --- |
-| Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded wor... | `llm-arxiv-2503-16581v1-1`, `llm-arxiv-2503-16581v1-2`, `llm-arxiv-2401-15391v1-1`, `llm-arxiv-2401-15391v1-2` |
-| A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `llm-arxiv-2501-09136v4-2` |
+| Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded wor... | `llm-arxiv-2411-19443v1-1`, `llm-arxiv-2411-19443v1-2`, `llm-arxiv-2503-16581v1-1`, `llm-arxiv-2503-16581v1-2` |
+| A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `llm-arxiv-2503-16581v1-3`, `llm-arxiv-2401-15391v1-3`, `llm-arxiv-2501-09136v4-2` |

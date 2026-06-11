@@ -18,6 +18,24 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("topic", help="Research topic to investigate.")
     run_parser.add_argument("--top-k", type=int, default=5, help="Number of papers to select.")
     run_parser.add_argument(
+        "--candidate-multiplier",
+        type=int,
+        default=8,
+        help="Candidate pool size multiplier before ranking. Defaults to 8.",
+    )
+    run_parser.add_argument(
+        "--max-candidates",
+        type=int,
+        default=None,
+        help="Explicit maximum candidate pool size before ranking.",
+    )
+    run_parser.add_argument(
+        "--from-year",
+        type=int,
+        default=2020,
+        help="Keep candidates from this year onward. Use 0 to disable.",
+    )
+    run_parser.add_argument(
         "--source",
         default="offline",
         choices=["offline", "arxiv", "semantic_scholar", "semantic-scholar", "hybrid"],
@@ -80,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
             write_trace=args.trace,
             llm=args.llm,
             require_live=args.require_live,
+            candidate_multiplier=args.candidate_multiplier,
+            max_candidates=args.max_candidates,
+            from_year=args.from_year,
         )
         print(f"Task ID: {result.task_id}")
         print(f"Status: {result.status}")

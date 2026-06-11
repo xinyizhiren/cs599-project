@@ -11,6 +11,9 @@ class ResearchState(TypedDict, total=False):
     task_id: str
     topic: str
     top_k: int
+    candidate_multiplier: int
+    candidate_limit: int
+    from_year: int | None
     requested_source: str
     actual_source: str
     fallback_reason: str
@@ -25,9 +28,13 @@ class ResearchState(TypedDict, total=False):
     llm_fallback_reason: str
     query_plan: list[QueryItem]
     searched_papers: list[PaperRecord]
+    ranked_candidates: list[PaperRecord]
     selected_papers: list[PaperRecord]
+    temporal_profile: dict[str, Any]
     research_lens: dict[str, Any]
+    corpus_profile: dict[str, Any]
     evidence_items: list[EvidenceItem]
+    llm_chunk_count: int
     claims: list[ClaimRecord]
     citation_checks: list[CitationCheck]
     report_markdown: str

@@ -18,6 +18,8 @@ def test_run_research_offline_generates_report() -> None:
         process_output=str(process_output),
         offline=True,
         write_trace=False,
+        candidate_multiplier=6,
+        from_year=2024,
     )
 
     assert result.status == "success"
@@ -30,6 +32,9 @@ def test_run_research_offline_generates_report() -> None:
     assert result.metrics["evidence_count"] == 6
     assert result.metrics["overall_score"] > 80
     assert result.metrics["claim_evidence_coverage"] == 1.0
+    assert result.metrics["candidate_limit"] == 18
+    assert result.metrics["from_year"] == 2024
+    assert result.metrics["latest_candidate_year"] >= 2024
     assert result.summary_path == str(summary_output)
     summary = summary_output.read_text(encoding="utf-8")
     assert "领域调研总结" in summary
@@ -42,6 +47,9 @@ def test_run_research_offline_generates_report() -> None:
     assert "Query Plan" in process
     assert "Evidence Extraction" in process
     assert "Summary path" in process
+    assert "Candidate limit" in process
+    assert "Candidate year range" in process
+    assert "Information Compression Strategy" in process
     assert "DEEPSEEK_API_KEY" not in process
     assert re.search(r"sk-[A-Za-z0-9]{16,}", process) is None
 

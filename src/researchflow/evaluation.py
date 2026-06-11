@@ -70,6 +70,7 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     trace = state.get("node_trace", [])
     errors = state.get("errors", [])
     research_lens = state.get("research_lens", {})
+    temporal_profile = state.get("temporal_profile", {})
 
     report_generated = bool(state.get("report_path")) and Path(state["report_path"]).exists()
     run_success_rate = 1.0 if report_generated and selected else 0.0
@@ -130,6 +131,9 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "query_count": len(query_plan),
         "searched_paper_count": len(searched),
         "selected_paper_count": len(selected),
+        "candidate_limit": state.get("candidate_limit", len(searched)),
+        "candidate_multiplier": state.get("candidate_multiplier", 0),
+        "from_year": state.get("from_year"),
         "evidence_count": len(evidence),
         "claim_count": len(claims),
         "citation_check_count": len(checks),
@@ -145,6 +149,11 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "llm_provider": state.get("llm_provider", "off"),
         "llm_used": bool(state.get("llm_used", False)),
         "llm_fallback_reason": state.get("llm_fallback_reason", ""),
+        "llm_chunk_count": state.get("llm_chunk_count", 0),
+        "earliest_candidate_year": temporal_profile.get("earliest_year"),
+        "latest_candidate_year": temporal_profile.get("latest_year"),
+        "recent_3_year_ratio": temporal_profile.get("last_3_year_ratio", 0.0),
+        "recent_5_year_ratio": temporal_profile.get("last_5_year_ratio", 0.0),
         "research_lens_coverage": _round(float(research_lens.get("coverage", 0.0))),
         "graph_runtime": state.get("graph_runtime", ""),
         "dimension_scores": {
