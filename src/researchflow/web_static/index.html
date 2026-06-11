@@ -30,17 +30,18 @@
             >retrieval augmented generation for large language models</textarea>
           </label>
 
-          <fieldset class="segmented" aria-label="数据源">
-            <legend>数据源</legend>
-            <label><input type="radio" name="source" value="offline" checked /> Offline</label>
-            <label><input type="radio" name="source" value="arxiv" /> arXiv</label>
-            <label><input type="radio" name="source" value="hybrid" /> Hybrid</label>
+          <fieldset class="segmented source-grid" aria-label="数据源">
+            <legend>数据源（可多选）</legend>
+            <label><input type="checkbox" name="sources" value="offline" checked /> Offline</label>
+            <label><input type="checkbox" name="sources" value="arxiv" /> arXiv</label>
+            <label><input type="checkbox" name="sources" value="semantic_scholar" /> Semantic</label>
+            <label><input type="checkbox" name="sources" value="crossref" /> Crossref</label>
           </fieldset>
 
           <div class="form-grid">
             <label class="field">
               <span>Top K</span>
-              <input id="top-k" name="top_k" type="number" min="1" max="20" value="5" />
+              <input id="top-k" name="top_k" type="number" min="1" max="200" value="5" />
             </label>
             <label class="field">
               <span>起始年份</span>
@@ -51,6 +52,11 @@
           <label class="toggle-row">
             <input id="require-live" name="require_live" type="checkbox" />
             <span>要求实时数据源</span>
+          </label>
+
+          <label class="toggle-row">
+            <input id="llm-deepseek" name="llm_deepseek" type="checkbox" checked />
+            <span>DeepSeek 增强</span>
           </label>
 
           <button class="run-button" type="submit">
@@ -129,6 +135,11 @@
             <button class="tab active" type="button" data-report="report_markdown">报告</button>
             <button class="tab" type="button" data-report="summary_markdown">摘要</button>
             <button class="tab" type="button" data-report="process_markdown">过程</button>
+          </div>
+          <div class="download-actions" aria-label="下载 Markdown">
+            <button type="button" data-download="report">下载报告</button>
+            <button type="button" data-download="summary">下载摘要</button>
+            <button type="button" data-download="process">下载过程</button>
           </div>
           <pre id="report-preview" class="report-preview">暂无报告</pre>
         </section>

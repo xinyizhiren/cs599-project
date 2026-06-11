@@ -15,6 +15,7 @@ class ResearchState(TypedDict, total=False):
     candidate_limit: int
     from_year: int | None
     requested_source: str
+    selected_sources: list[str]
     actual_source: str
     fallback_reason: str
     output_path: str | None

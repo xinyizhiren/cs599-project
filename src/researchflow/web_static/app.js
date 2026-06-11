@@ -17,6 +17,7 @@ const paperCount = document.querySelector("#paper-count");
 const evidenceCount = document.querySelector("#evidence-count");
 const reportPreview = document.querySelector("#report-preview");
 const refreshRuns = document.querySelector("#refresh-runs");
+const downloadActions = document.querySelector(".download-actions");
 
 let activeRun = null;
 let selectedStepId = "understand_topic";
@@ -232,7 +233,7 @@ function renderRun(run) {
   const status = run?.status || "idle";
   setStatus(statusChip, status);
   subtitle.textContent = run
-    ? `${run.request.topic} · ${run.request.source} · ${shortId(run.id)}`
+    ? `${run.request.topic} · ${(run.request.sources || [run.request.source]).join(" + ")} · ${run.request.llm} · ${shortId(run.id)}`
     : "提交一个研究主题，查看可追踪的理解、检索、证据和报告生成流程。";
   processCaption.textContent = run?.current_step ? `正在执行 ${run.current_step}` : status === "success" ? "任务完成" : "等待任务开始";
 
@@ -246,6 +247,14 @@ function renderRun(run) {
   renderPapers(run);
   renderEvidence(run);
   renderReport(run);
+  updateDownloadButtons(run);
+}
+
+function updateDownloadButtons(run) {
+  const ready = run?.status === "success" || run?.status === "failed";
+  downloadActions.querySelectorAll("[data-download]").forEach((button) => {
+    button.disabled = !ready;
+  });
 }
 
 async function refreshRunList() {
@@ -283,12 +292,14 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   runButton.disabled = true;
   const formData = new FormData(form);
+  const sources = formData.getAll("sources");
   const payload = {
     topic: formData.get("topic"),
-    source: formData.get("source"),
+    sources: sources.length ? sources : ["offline"],
     top_k: Number(formData.get("top_k")),
     from_year: Number(formData.get("from_year")),
     require_live: formData.get("require_live") === "on",
+    llm: formData.get("llm_deepseek") === "on" ? "deepseek" : "off",
   };
 
   try {
@@ -330,6 +341,15 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 refreshRuns.addEventListener("click", refreshRunList);
+
+downloadActions.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-download]");
+  if (!button || !activeRun || button.disabled) return;
+  const kind = button.dataset.download;
+  window.location.href = apiPath(`./api/runs/${encodeURIComponent(activeRun.id)}/download/${kind}`);
+});
+
+updateDownloadButtons(null);
 
 refreshRunList().catch((error) => {
   reportPreview.textContent = `Error: ${error.message}`;

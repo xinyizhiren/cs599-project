@@ -168,6 +168,10 @@ input[type="number"]:focus {
   border: 0;
 }
 
+.source-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .segmented legend {
   grid-column: 1 / -1;
   margin-bottom: 1px;
@@ -671,6 +675,28 @@ h1 {
   border-color: var(--text);
   background: var(--text);
   color: white;
+}
+
+.download-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.download-actions button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfe;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.download-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .report-preview {

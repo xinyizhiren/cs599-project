@@ -40,6 +40,12 @@ from .state import ResearchState
 
 
 StepStatus = str
+ALLOWED_SOURCES = {"offline", "arxiv", "semantic_scholar", "crossref"}
+DOWNLOAD_KINDS = {
+    "report": ("report_markdown", "report.md"),
+    "summary": ("summary_markdown", "summary.md"),
+    "process": ("process_markdown", "process.md"),
+}
 
 STEP_DEFINITIONS: list[dict[str, str]] = [
     {
@@ -128,19 +134,31 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
     if not topic:
         raise ValueError("Research topic cannot be empty.")
 
-    source = str(payload.get("source", "offline")).strip().replace("-", "_")
-    if source not in {"offline", "arxiv", "semantic_scholar", "crossref", "hybrid"}:
-        source = "offline"
+    raw_sources = payload.get("sources")
+    if isinstance(raw_sources, list):
+        sources = [
+            str(source).strip().replace("-", "_")
+            for source in raw_sources
+            if str(source).strip().replace("-", "_") in ALLOWED_SOURCES
+        ]
+    else:
+        source = str(payload.get("source", "offline")).strip().replace("-", "_")
+        sources = ["arxiv", "semantic_scholar", "crossref"] if source == "hybrid" else [source]
 
-    llm = str(payload.get("llm", "off")).strip()
+    sources = list(dict.fromkeys(source for source in sources if source in ALLOWED_SOURCES))
+    if not sources:
+        sources = ["offline"]
+
+    llm = str(payload.get("llm", "deepseek")).strip()
     if llm not in {"off", "deepseek"}:
-        llm = "off"
+        llm = "deepseek"
 
     from_year = _safe_int(payload.get("from_year"), DEFAULT_FROM_YEAR, 0, 2100)
     return {
         "topic": topic,
-        "top_k": _safe_int(payload.get("top_k"), 5, 1, 20),
-        "source": source,
+        "top_k": _safe_int(payload.get("top_k"), 5, 1, 200),
+        "source": "+".join(sources),
+        "sources": sources,
         "from_year": from_year,
         "candidate_multiplier": _safe_int(
             payload.get("candidate_multiplier"),
@@ -156,6 +174,7 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -> ResearchState:
     requested_source = request["source"]
+    selected_sources = list(request.get("sources", [requested_source]))
     top_k = int(request["top_k"])
     candidate_multiplier = int(request["candidate_multiplier"])
     candidate_limit = candidate_limit_for(top_k, candidate_multiplier, request.get("max_candidates"))
@@ -170,6 +189,7 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
         "candidate_limit": candidate_limit,
         "from_year": normalized_from_year,
         "requested_source": requested_source,
+        "selected_sources": selected_sources,
         "output_path": str(run_dir / f"{slug}.md"),
         "summary_output_path": str(run_dir / "summary.md"),
         "process_output_path": str(run_dir / "process.md"),
@@ -347,8 +367,10 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
     summary = f"Topic normalized with {len(terms)} search terms and source {state['requested_source']}."
     stats = {
         "terms": terms,
+        "sources": state.get("selected_sources", [state["requested_source"]]),
         "candidate_limit": state.get("candidate_limit"),
         "from_year": state.get("from_year"),
+        "llm_provider": state.get("llm_provider", "off"),
     }
 
     def mutate(job: dict[str, Any]) -> None:
@@ -359,7 +381,14 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
             "success",
             elapsed_ms=0,
             summary=summary,
-            output_keys=["topic", "requested_source", "candidate_limit", "from_year"],
+            output_keys=[
+                "topic",
+                "requested_source",
+                "selected_sources",
+                "candidate_limit",
+                "from_year",
+                "llm_provider",
+            ],
             stats=stats,
         )
         job["snapshots"] = _snapshot_state(state)
@@ -551,6 +580,23 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
     def _send_error_json(self, status: int, message: str) -> None:
         self._send_json(status, {"error": message})
 
+    def _send_markdown_download(self, job: dict[str, Any], kind: str) -> None:
+        key, filename = DOWNLOAD_KINDS[kind]
+        markdown = str(job.get("snapshots", {}).get(key, "") or "")
+        if not markdown:
+            self._send_error_json(HTTPStatus.NOT_FOUND, "Markdown content is not ready.")
+            return
+        body = markdown.encode("utf-8")
+        safe_id = slugify(str(job.get("id", "researchflow")), max_length=36)
+        download_name = f"{safe_id}-{filename}"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/markdown; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _read_json_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
@@ -606,10 +652,17 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/runs/"):
-            job_id = path.removeprefix("/api/runs/").strip("/")
+            parts = path.removeprefix("/api/runs/").strip("/").split("/")
+            job_id = parts[0]
             job = STORE.get(job_id)
             if not job:
                 self._send_error_json(HTTPStatus.NOT_FOUND, "Run not found.")
+                return
+            if len(parts) == 3 and parts[1] == "download" and parts[2] in DOWNLOAD_KINDS:
+                if send_body:
+                    self._send_markdown_download(job, parts[2])
+                else:
+                    self._send_json(HTTPStatus.OK, {"status": "ready"}, send_body=False)
                 return
             self._send_json(HTTPStatus.OK, job, send_body=send_body)
             return

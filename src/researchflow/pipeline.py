@@ -18,7 +18,7 @@ from .graph import NodeSpec, run_research_graph
 from .llm import LLMError, build_llm_client
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, ResearchResult
 from .offline_data import OFFLINE_PAPERS
-from .planner import plan_queries, topic_terms
+from .planner import normalize_topic, plan_queries, topic_terms
 from .report import render_process_markdown, render_report, render_summary_report
 from .state import ResearchState
 from .tools import (
@@ -127,6 +127,7 @@ RAG_LENS_DIMENSIONS: dict[str, tuple[str, ...]] = {
 DEFAULT_CANDIDATE_MULTIPLIER = 8
 DEFAULT_FROM_YEAR = 2020
 DEFAULT_LLM_BATCH_CHARS = 9000
+LIVE_QUERY_PLAN_LIMIT = 6
 
 
 def slugify(value: str, max_length: int = 48) -> str:
@@ -260,7 +261,7 @@ def balanced_merge_papers(source_groups: list[list[PaperRecord]], limit: int) ->
 def _search_arxiv_queries(query_plan: list[Any], limit: int) -> tuple[list[PaperRecord], list[str]]:
     collected: list[PaperRecord] = []
     errors: list[str] = []
-    for query in query_plan[:3]:
+    for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
             collected.extend(search_arxiv(query.query_text, limit=limit))
         except ArxivSearchError as exc:
@@ -274,7 +275,7 @@ def _search_semantic_scholar_queries(
 ) -> tuple[list[PaperRecord], list[str]]:
     collected: list[PaperRecord] = []
     errors: list[str] = []
-    for query in query_plan[:3]:
+    for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
             collected.extend(search_semantic_scholar(query.query_text, limit=limit))
         except SemanticScholarSearchError as exc:
@@ -289,7 +290,7 @@ def _search_crossref_queries(
 ) -> tuple[list[PaperRecord], list[str]]:
     collected: list[PaperRecord] = []
     errors: list[str] = []
-    for query in query_plan[:3]:
+    for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
             collected.extend(search_crossref(query.query_text, limit=limit, from_year=from_year))
         except CrossrefSearchError as exc:
@@ -338,15 +339,15 @@ def search_source(
         return search_offline(topic, limit=limit), "offline", fallback_reason
 
     if source == "hybrid":
-        arxiv_papers, arxiv_errors = _search_arxiv_queries(query_plan[:2], limit)
-        semantic_papers, semantic_errors = _search_semantic_scholar_queries(query_plan[:2], limit)
+        arxiv_papers, arxiv_errors = _search_arxiv_queries(query_plan, limit)
+        semantic_papers, semantic_errors = _search_semantic_scholar_queries(query_plan, limit)
         from_year = None
         if query_plan:
             filters = getattr(query_plan[0], "filters", {})
             if isinstance(filters, dict):
                 from_year = filters.get("from_year")
         crossref_papers, crossref_errors = _search_crossref_queries(
-            query_plan[:2],
+            query_plan,
             limit,
             from_year=from_year,
         )
@@ -365,6 +366,81 @@ def search_source(
         return search_offline(topic, limit=limit), "offline", fallback_reason
 
     fallback_reason = f"Source '{source}' is not implemented; offline fallback used."
+    return search_offline(topic, limit=limit), "offline", fallback_reason
+
+
+def search_selected_sources(
+    topic: str,
+    query_plan: list[Any],
+    sources: list[str],
+    limit: int,
+) -> tuple[list[PaperRecord], str, str | None]:
+    """Search a user-selected source set and merge results fairly."""
+
+    normalized_sources: list[str] = []
+    for source in sources:
+        normalized = source.replace("-", "_")
+        if normalized == "hybrid":
+            normalized_sources.extend(["arxiv", "semantic_scholar", "crossref"])
+        elif normalized in {"offline", "arxiv", "semantic_scholar", "crossref"}:
+            normalized_sources.append(normalized)
+
+    if not normalized_sources:
+        normalized_sources = ["offline"]
+
+    normalized_sources = list(dict.fromkeys(normalized_sources))
+    if len(normalized_sources) == 1:
+        return search_source(topic, query_plan, normalized_sources[0], limit)
+
+    source_groups: list[list[PaperRecord]] = []
+    actual_sources: list[str] = []
+    errors: list[str] = []
+
+    if "offline" in normalized_sources:
+        source_groups.append(search_offline(topic, limit=limit))
+        actual_sources.append("offline")
+
+    if "arxiv" in normalized_sources:
+        papers, source_errors = _search_arxiv_queries(query_plan, limit)
+        unique = dedupe_papers(papers)
+        if unique:
+            source_groups.append(unique)
+            actual_sources.append("arxiv")
+        else:
+            errors.extend(source_errors or ["arXiv returned no papers."])
+
+    if "semantic_scholar" in normalized_sources:
+        papers, source_errors = _search_semantic_scholar_queries(query_plan, limit)
+        unique = dedupe_papers(papers)
+        if unique:
+            source_groups.append(unique)
+            actual_sources.append("semantic_scholar")
+        else:
+            errors.extend(source_errors or ["Semantic Scholar returned no papers."])
+
+    if "crossref" in normalized_sources:
+        from_year = None
+        if query_plan:
+            filters = getattr(query_plan[0], "filters", {})
+            if isinstance(filters, dict):
+                from_year = filters.get("from_year")
+        papers, source_errors = _search_crossref_queries(query_plan, limit, from_year=from_year)
+        unique = dedupe_papers(papers)
+        if unique:
+            source_groups.append(unique)
+            actual_sources.append("crossref")
+        else:
+            errors.extend(source_errors or ["Crossref returned no papers."])
+
+    if source_groups:
+        merged = balanced_merge_papers(source_groups, limit=limit)
+        live_sources = {"arxiv", "semantic_scholar", "crossref"}
+        actual_label = "+".join(actual_sources)
+        if set(normalized_sources) == live_sources and set(actual_sources) == live_sources:
+            actual_label = "hybrid"
+        return merged, actual_label, "; ".join(errors) or None
+
+    fallback_reason = "; ".join(errors) or "Selected live sources returned no papers."
     return search_offline(topic, limit=limit), "offline", fallback_reason
 
 
@@ -797,10 +873,10 @@ def node_plan_queries(state: ResearchState) -> dict[str, Any]:
 
 
 def node_search_papers(state: ResearchState) -> dict[str, Any]:
-    raw_papers, actual_source, fallback_reason = search_source(
+    raw_papers, actual_source, fallback_reason = search_selected_sources(
         topic=state["topic"],
         query_plan=state["query_plan"],
-        source=state["requested_source"],
+        sources=state.get("selected_sources", [state["requested_source"]]),
         limit=int(state.get("candidate_limit", max(int(state["top_k"]) * 4, 10))),
     )
     searched_papers = filter_papers_by_year(raw_papers, state.get("from_year"))
@@ -952,6 +1028,11 @@ def run_research(
 
     task_id = make_task_id(topic)
     requested_source = "offline" if offline else source.replace("-", "_")
+    selected_sources = (
+        ["arxiv", "semantic_scholar", "crossref"]
+        if requested_source == "hybrid"
+        else [requested_source]
+    )
     candidate_limit = candidate_limit_for(top_k, candidate_multiplier, max_candidates)
     normalized_from_year = normalize_from_year(from_year)
     initial_state: ResearchState = {
@@ -962,6 +1043,7 @@ def run_research(
         "candidate_limit": candidate_limit,
         "from_year": normalized_from_year,
         "requested_source": requested_source,
+        "selected_sources": selected_sources,
         "output_path": output,
         "summary_output_path": summary_output,
         "process_output_path": process_output,
