@@ -523,22 +523,30 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003 - stdlib signature
         return
 
-    def _send_json(self, status: int, payload: Any) -> None:
+    def _send_json(self, status: int, payload: Any, send_body: bool = True) -> None:
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if send_body:
+            self.wfile.write(body)
 
-    def _send_bytes(self, status: int, body: bytes, content_type: str) -> None:
+    def _send_bytes(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        send_body: bool = True,
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if send_body:
+            self.wfile.write(body)
 
     def _send_error_json(self, status: int, message: str) -> None:
         self._send_json(status, {"error": message})
@@ -567,13 +575,13 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
             content_type = "text/html; charset=utf-8"
         return body, content_type
 
-    def do_GET(self) -> None:  # noqa: N802 - stdlib hook
+    def _handle_get(self, send_body: bool) -> None:
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
 
         if path in {"/", "/index.html"}:
             body, content_type = self._static_bytes("index.html")
-            self._send_bytes(HTTPStatus.OK, body, content_type)
+            self._send_bytes(HTTPStatus.OK, body, content_type, send_body=send_body)
             return
 
         if path.startswith("/static/"):
@@ -582,15 +590,19 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
             except FileNotFoundError:
                 self._send_error_json(HTTPStatus.NOT_FOUND, "Static file not found.")
                 return
-            self._send_bytes(HTTPStatus.OK, body, content_type)
+            self._send_bytes(HTTPStatus.OK, body, content_type, send_body=send_body)
             return
 
         if path == "/api/health":
-            self._send_json(HTTPStatus.OK, {"status": "ok", "service": "researchflow-web"})
+            self._send_json(
+                HTTPStatus.OK,
+                {"status": "ok", "service": "researchflow-web"},
+                send_body=send_body,
+            )
             return
 
         if path == "/api/runs":
-            self._send_json(HTTPStatus.OK, {"runs": STORE.list_recent()})
+            self._send_json(HTTPStatus.OK, {"runs": STORE.list_recent()}, send_body=send_body)
             return
 
         if path.startswith("/api/runs/"):
@@ -599,10 +611,16 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
             if not job:
                 self._send_error_json(HTTPStatus.NOT_FOUND, "Run not found.")
                 return
-            self._send_json(HTTPStatus.OK, job)
+            self._send_json(HTTPStatus.OK, job, send_body=send_body)
             return
 
         self._send_error_json(HTTPStatus.NOT_FOUND, "Route not found.")
+
+    def do_GET(self) -> None:  # noqa: N802 - stdlib hook
+        self._handle_get(send_body=True)
+
+    def do_HEAD(self) -> None:  # noqa: N802 - stdlib hook
+        self._handle_get(send_body=False)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib hook
         parsed = urlparse(self.path)
