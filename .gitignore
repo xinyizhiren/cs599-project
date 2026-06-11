@@ -40,6 +40,7 @@ Thumbs.db
 # Runtime artifacts
 data/cache/
 data/runtime/
+data/web_runs/
 examples/reports/
 logs/
 tmp/

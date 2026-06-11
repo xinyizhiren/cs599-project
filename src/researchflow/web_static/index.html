@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ResearchFlow Agent Console</title>
+    <link rel="stylesheet" href="./static/styles.css" />
+    <script defer src="./static/app.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="ResearchFlow controls">
+        <div class="brand">
+          <span class="brand-mark">R</span>
+          <div>
+            <strong>ResearchFlow</strong>
+            <small>Agent Console</small>
+          </div>
+        </div>
+
+        <form id="run-form" class="run-form">
+          <label class="field field-tall">
+            <span>研究主题</span>
+            <textarea
+              id="topic"
+              name="topic"
+              rows="5"
+              required
+              spellcheck="false"
+            >retrieval augmented generation for large language models</textarea>
+          </label>
+
+          <fieldset class="segmented" aria-label="数据源">
+            <legend>数据源</legend>
+            <label><input type="radio" name="source" value="offline" checked /> Offline</label>
+            <label><input type="radio" name="source" value="arxiv" /> arXiv</label>
+            <label><input type="radio" name="source" value="hybrid" /> Hybrid</label>
+          </fieldset>
+
+          <div class="form-grid">
+            <label class="field">
+              <span>Top K</span>
+              <input id="top-k" name="top_k" type="number" min="1" max="20" value="5" />
+            </label>
+            <label class="field">
+              <span>起始年份</span>
+              <input id="from-year" name="from_year" type="number" min="0" max="2100" value="2020" />
+            </label>
+          </div>
+
+          <label class="toggle-row">
+            <input id="require-live" name="require_live" type="checkbox" />
+            <span>要求实时数据源</span>
+          </label>
+
+          <button class="run-button" type="submit">
+            <span class="button-icon" aria-hidden="true">▶</span>
+            Run Agent
+          </button>
+        </form>
+
+        <section class="history" aria-label="运行记录">
+          <div class="section-title">
+            <span>运行记录</span>
+            <button id="refresh-runs" class="icon-button" type="button" title="刷新">↻</button>
+          </div>
+          <div id="run-list" class="run-list"></div>
+        </section>
+      </aside>
+
+      <section class="workspace" aria-label="Agent workspace">
+        <header class="topbar">
+          <div>
+            <h1>Agent 工作台</h1>
+            <p id="run-subtitle">提交一个研究主题，查看可追踪的理解、检索、证据和报告生成流程。</p>
+          </div>
+          <div id="run-status" class="status-chip">idle</div>
+        </header>
+
+        <section class="process-panel" aria-label="Agent process">
+          <div class="panel-head">
+            <div>
+              <h2>处理流程</h2>
+              <p id="process-caption">等待任务开始</p>
+            </div>
+            <div id="trace-runtime" class="runtime-meter">0 ms</div>
+          </div>
+          <ol id="step-list" class="step-list"></ol>
+        </section>
+
+        <section class="bottom-grid">
+          <article class="data-panel" aria-label="Selected papers">
+            <div class="panel-head compact">
+              <h2>核心论文</h2>
+              <span id="paper-count">0</span>
+            </div>
+            <div id="paper-list" class="paper-list empty-state">暂无数据</div>
+          </article>
+
+          <article class="data-panel" aria-label="Evidence">
+            <div class="panel-head compact">
+              <h2>证据片段</h2>
+              <span id="evidence-count">0</span>
+            </div>
+            <div id="evidence-list" class="evidence-list empty-state">暂无数据</div>
+          </article>
+        </section>
+      </section>
+
+      <aside class="inspector" aria-label="Agent inspector">
+        <div class="inspector-head">
+          <h2 id="inspector-title">节点详情</h2>
+          <span id="inspector-state">idle</span>
+        </div>
+
+        <section class="inspector-section">
+          <h3>输出摘要</h3>
+          <p id="step-summary" class="summary-text">选择一次运行后会显示节点输出。</p>
+          <dl id="step-stats" class="stats-list"></dl>
+        </section>
+
+        <section class="inspector-section">
+          <h3>查询计划</h3>
+          <div id="query-plan" class="query-plan empty-state">暂无数据</div>
+        </section>
+
+        <section class="inspector-section report-section">
+          <div class="report-tabs" role="tablist" aria-label="报告视图">
+            <button class="tab active" type="button" data-report="report_markdown">报告</button>
+            <button class="tab" type="button" data-report="summary_markdown">摘要</button>
+            <button class="tab" type="button" data-report="process_markdown">过程</button>
+          </div>
+          <pre id="report-preview" class="report-preview">暂无报告</pre>
+        </section>
+      </aside>
+    </main>
+  </body>
+</html>

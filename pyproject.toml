@@ -27,9 +27,13 @@ agent = [
 
 [project.scripts]
 researchflow = "researchflow.__main__:main"
+researchflow-web = "researchflow.web:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+researchflow = ["web_static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
