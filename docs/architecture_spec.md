@@ -29,7 +29,7 @@ CLI/API Entry
 | --- | --- |
 | CLI/API Entry | 接收用户主题、Top-K、输出路径等参数 |
 | ResearchGraph Orchestrator | 维护任务状态、节点路由、失败重试、trace 和 fallback |
-| Agent Nodes | Query Planner、Searcher、Reader、Extractor、Synthesizer、Checker、Reporter |
+| Agent Nodes | Topic Refiner、Query Planner、Searcher、Reader、Extractor、Synthesizer、Checker、Reporter |
 | Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、PDF parser、Markdown writer |
 | Storage and Memory | SQLite 存储任务、论文、证据、报告和 trace |
 | Evaluation and Observability | 记录指标、节点日志、benchmark 结果 |
@@ -38,7 +38,8 @@ CLI/API Entry
 
 ```mermaid
 flowchart TD
-    A["User Topic"] --> B["Query Planner"]
+    A["User Topic"] --> R["Optional Topic Refiner"]
+    R --> B["Query Planner"]
     B --> C["Paper Searcher"]
     C --> D["Paper Ranker"]
     D --> E{"Enough Papers?"}
@@ -61,13 +62,15 @@ flowchart TD
 
 职责：
 
-- 分析研究主题。
-- 生成检索关键词、同义词和排除条件。
-- 输出多组检索计划。
+- 接收原始主题或 refined topic。
+- 生成 core、survey taxonomy、methods systems、evaluation benchmark、limitations、applications、security 和 adjacent topic 等多角度检索计划。
+- 在每条 QueryItem 中记录 angle、distance 和 from_year，方便过程审计与评估。
 
 输入：
 
 - `topic`
+- `effective_topic`
+- `topic_refinement`
 - `constraints`
 
 输出：
@@ -180,6 +183,9 @@ flowchart TD
 class ResearchState(TypedDict):
     task_id: str
     topic: str
+    effective_topic: str
+    refine_topic: bool
+    topic_refinement: dict
     constraints: dict
     query_plan: list[dict]
     searched_papers: list[dict]

@@ -71,6 +71,16 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     errors = state.get("errors", [])
     research_lens = state.get("research_lens", {})
     temporal_profile = state.get("temporal_profile", {})
+    query_angles = {
+        str(getattr(query, "filters", {}).get("angle", ""))
+        for query in query_plan
+        if getattr(query, "filters", {}).get("angle")
+    }
+    adjacent_query_count = sum(
+        1
+        for query in query_plan
+        if getattr(query, "filters", {}).get("distance") == "adjacent"
+    )
 
     report_generated = bool(state.get("report_path")) and Path(state["report_path"]).exists()
     run_success_rate = 1.0 if report_generated and selected else 0.0
@@ -110,15 +120,14 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     )
 
     expected_nodes = 7
+    actual_sources = {
+        item for item in str(state.get("actual_source", "")).split("+") if item
+    }
+    valid_sources = {"offline", "arxiv", "semantic_scholar", "crossref", "hybrid"}
     tool_call_correctness = (
         1.0
-        if state.get("actual_source") in {
-            "offline",
-            "arxiv",
-            "semantic_scholar",
-            "crossref",
-            "hybrid",
-        }
+        if actual_sources
+        and all(item in valid_sources for item in actual_sources)
         and searched
         else 0.0
     )
@@ -135,6 +144,8 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     overall_score = task_completion_score + retrieval_score + evidence_score + report_score + agent_score
     return {
         "query_count": len(query_plan),
+        "query_angle_count": len(query_angles),
+        "adjacent_query_count": adjacent_query_count,
         "searched_paper_count": len(searched),
         "selected_paper_count": len(selected),
         "candidate_limit": state.get("candidate_limit", len(searched)),
@@ -156,6 +167,10 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "llm_used": bool(state.get("llm_used", False)),
         "llm_fallback_reason": state.get("llm_fallback_reason", ""),
         "llm_chunk_count": state.get("llm_chunk_count", 0),
+        "refine_topic": bool(state.get("refine_topic", False)),
+        "effective_topic": state.get("effective_topic", state.get("topic", "")),
+        "topic_refinement_used": bool(state.get("topic_refinement_used", False)),
+        "topic_refinement_fallback_reason": state.get("topic_refinement_fallback_reason", ""),
         "earliest_candidate_year": temporal_profile.get("earliest_year"),
         "latest_candidate_year": temporal_profile.get("latest_year"),
         "recent_3_year_ratio": temporal_profile.get("last_3_year_ratio", 0.0),

@@ -168,6 +168,7 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "max_candidates": None,
         "llm": llm,
+        "refine_topic": bool(payload.get("refine_topic", False)),
         "require_live": bool(payload.get("require_live", False)),
     }
 
@@ -184,6 +185,8 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
     return {
         "task_id": task_id,
         "topic": request["topic"],
+        "effective_topic": request["topic"],
+        "refine_topic": bool(request.get("refine_topic", False)),
         "top_k": top_k,
         "candidate_multiplier": candidate_multiplier,
         "candidate_limit": candidate_limit,
@@ -215,7 +218,14 @@ def _summarize_node(node_name: str, state: ResearchState, update: dict[str, Any]
     if node_name == "plan_queries":
         queries = state.get("query_plan", [])
         first = getattr(queries[0], "query_text", "") if queries else ""
-        return f"Planned {len(queries)} search queries.", {"first_query": first}
+        return (
+            f"Planned {len(queries)} search queries.",
+            {
+                "first_query": first,
+                "effective_topic": state.get("effective_topic", state.get("topic", "")),
+                "topic_refinement_used": bool(state.get("topic_refinement_used", False)),
+            },
+        )
 
     if node_name == "search_papers":
         papers = state.get("searched_papers", [])
@@ -280,6 +290,11 @@ def _summarize_node(node_name: str, state: ResearchState, update: dict[str, Any]
 def _snapshot_state(state: ResearchState) -> dict[str, Any]:
     return {
         "topic": state.get("topic", ""),
+        "effective_topic": state.get("effective_topic", state.get("topic", "")),
+        "refine_topic": bool(state.get("refine_topic", False)),
+        "topic_refinement": _serialize(state.get("topic_refinement", {})),
+        "topic_refinement_used": bool(state.get("topic_refinement_used", False)),
+        "topic_refinement_fallback_reason": state.get("topic_refinement_fallback_reason", ""),
         "query_plan": _serialize(state.get("query_plan", [])),
         "searched_papers": _serialize(state.get("searched_papers", []))[:12],
         "selected_papers": _serialize(state.get("selected_papers", [])),
@@ -371,6 +386,7 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
         "candidate_limit": state.get("candidate_limit"),
         "from_year": state.get("from_year"),
         "llm_provider": state.get("llm_provider", "off"),
+        "refine_topic": bool(state.get("refine_topic", False)),
     }
 
     def mutate(job: dict[str, Any]) -> None:
@@ -388,6 +404,7 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
                 "candidate_limit",
                 "from_year",
                 "llm_provider",
+                "refine_topic",
             ],
             stats=stats,
         )

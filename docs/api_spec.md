@@ -32,6 +32,7 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --require-live | bool | 否 | false | 联网源 fallback 到 offline 时返回失败 |
 | --trace | bool | 否 | true | 是否保存 trace |
 | --llm | string | 否 | off | 可选 LLM，支持 off 和 deepseek |
+| --refine-topic | bool | 否 | false | 使用 LLM 将模糊主题修正为可检索学术主题，并生成相邻查询角度 |
 
 输出：
 
@@ -111,6 +112,7 @@ def run_research(
     candidate_multiplier: int = 8,
     max_candidates: int | None = None,
     from_year: int | None = 2020,
+    refine_topic: bool = False,
 ) -> ResearchResult:
     ...
 ```
@@ -156,7 +158,8 @@ def search_papers(query: QueryItem, limit: int = 20) -> list[PaperRecord]:
   "source": "arxiv",
   "filters": {
     "from_year": 2020,
-    "category": "cs.AI"
+    "angle": "evaluation_benchmark",
+    "distance": "direct"
   }
 }
 ```
@@ -344,6 +347,12 @@ def write_report(
 | llm_used | 是否实际使用 LLM 输出 |
 | llm_fallback_reason | LLM 降级原因 |
 | llm_chunk_count | LLM 证据抽取批次数，用于观察上下文窗口分批策略 |
+| refine_topic | 是否启用模糊主题修正 |
+| effective_topic | 实际用于检索和排序的主题 |
+| topic_refinement_used | 是否成功使用 LLM 修正主题 |
+| topic_refinement_fallback_reason | 主题修正降级原因 |
+| query_angle_count | 查询计划覆盖的角度数量 |
+| adjacent_query_count | 相邻主题或扩展角度查询数量 |
 | research_lens_coverage | RAG Research Lens 维度覆盖率 |
 | candidate_limit | 候选池目标规模 |
 | candidate_multiplier | 候选池规模倍数 |

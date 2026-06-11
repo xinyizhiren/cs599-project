@@ -80,13 +80,16 @@ def render_report(
         ]
     )
     if query_plan:
-        lines.append("| Query ID | Search Query | Source Intent |")
-        lines.append("| --- | --- | --- |")
+        lines.append("| Query ID | Search Query | Source Intent | Angle | Distance |")
+        lines.append("| --- | --- | --- | --- | --- |")
         for query in query_plan:
             query_id = getattr(query, "query_id", "")
             query_text = getattr(query, "query_text", "")
             source = getattr(query, "source", "")
-            lines.append(f"| `{query_id}` | {query_text} | {source} |")
+            filters = getattr(query, "filters", {})
+            angle = filters.get("angle", "") if isinstance(filters, dict) else ""
+            distance = filters.get("distance", "") if isinstance(filters, dict) else ""
+            lines.append(f"| `{query_id}` | {query_text} | {source} | {angle} | {distance} |")
         lines.append("")
     lines.extend(
         [
@@ -290,6 +293,7 @@ def render_summary_report(state: dict[str, Any]) -> str:
     metrics = state.get("metrics", {})
     research_lens = state.get("research_lens", {})
     corpus_profile = state.get("corpus_profile", {})
+    topic_refinement = state.get("topic_refinement", {})
     temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {})
     candidate_count = int(corpus_profile.get("candidate_count", len(state.get("searched_papers", []))))
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -505,6 +509,7 @@ def render_process_markdown(state: dict[str, Any]) -> str:
     research_lens = state.get("research_lens", {})
     temporal_profile = state.get("temporal_profile", {})
     corpus_profile = state.get("corpus_profile", {})
+    topic_refinement = state.get("topic_refinement", {})
 
     source_counts: dict[str, int] = defaultdict(int)
     for paper in searched_papers:
@@ -518,6 +523,11 @@ def render_process_markdown(state: dict[str, Any]) -> str:
         "## Run Summary",
         "",
         f"- Task ID: `{state.get('task_id', '')}`",
+        f"- Original topic: `{state.get('topic', '')}`",
+        f"- Effective search topic: `{state.get('effective_topic', state.get('topic', ''))}`",
+        f"- Topic refinement enabled: `{str(state.get('refine_topic', False)).lower()}`",
+        f"- Topic refinement used: `{str(state.get('topic_refinement_used', False)).lower()}`",
+        f"- Topic refinement fallback: {_sanitize_secret_text(state.get('topic_refinement_fallback_reason', '') or 'None')}",
         f"- Requested source: `{state.get('requested_source', '')}`",
         f"- Actual source: `{state.get('actual_source', '')}`",
         f"- Candidate limit: `{state.get('candidate_limit', '')}`",
@@ -531,6 +541,23 @@ def render_process_markdown(state: dict[str, Any]) -> str:
         f"- LLM used: `{str(state.get('llm_used', False)).lower()}`",
         f"- LLM chunk count: `{state.get('llm_chunk_count', 0)}`",
         f"- LLM fallback reason: {_sanitize_secret_text(state.get('llm_fallback_reason', '') or 'None')}",
+        "",
+        "## Topic Understanding",
+        "",
+        f"- Refined topic: `{topic_refinement.get('refined_topic', '') or state.get('effective_topic', '')}`",
+        f"- Scope notes: {_sanitize_secret_text(topic_refinement.get('scope_notes', '') or 'None')}",
+        "- Research questions: "
+        + (
+            "; ".join(_sanitize_secret_text(item) for item in topic_refinement.get("research_questions", []))
+            if topic_refinement.get("research_questions")
+            else "None"
+        ),
+        "- Adjacent topics: "
+        + (
+            "; ".join(_sanitize_secret_text(item) for item in topic_refinement.get("adjacent_topics", []))
+            if topic_refinement.get("adjacent_topics")
+            else "None"
+        ),
         "",
         "## Query Plan",
         "",

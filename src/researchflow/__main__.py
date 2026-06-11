@@ -72,6 +72,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["off", "deepseek"],
         help="Optional LLM provider for evidence extraction. Defaults to off.",
     )
+    run_parser.add_argument(
+        "--refine-topic",
+        action="store_true",
+        help="Use the selected LLM to refine fuzzy topics and plan adjacent searches.",
+    )
 
     eval_parser = subparsers.add_parser("evaluate", help="Run benchmark tasks.")
     eval_parser.add_argument("--benchmark", required=True, help="JSONL benchmark file.")
@@ -108,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
             candidate_multiplier=args.candidate_multiplier,
             max_candidates=args.max_candidates,
             from_year=args.from_year,
+            refine_topic=args.refine_topic,
         )
         print(f"Task ID: {result.task_id}")
         print(f"Status: {result.status}")

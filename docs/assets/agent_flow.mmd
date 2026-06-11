@@ -1,5 +1,6 @@
 flowchart TD
-    A["User Topic"] --> B["plan_queries"]
+    A["User Topic"] --> R["optional topic_refinement"]
+    R --> B["plan_queries"]
     B --> C["search_papers"]
     C --> D["rank_papers"]
     D --> E["extract_evidence"]

@@ -1,5 +1,6 @@
 flowchart LR
-    Topic["Topic"] --> Query["Query Plan"]
+    Topic["Original Topic"] --> Refined["Effective Topic"]
+    Refined --> Query["Multi-Angle Query Plan"]
     Query --> Papers["Searched Papers"]
     Papers --> Selected["Selected Papers"]
     Selected --> Evidence["Evidence Ledger"]

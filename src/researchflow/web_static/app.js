@@ -300,6 +300,7 @@ form.addEventListener("submit", async (event) => {
     from_year: Number(formData.get("from_year")),
     require_live: formData.get("require_live") === "on",
     llm: formData.get("llm_deepseek") === "on" ? "deepseek" : "off",
+    refine_topic: formData.get("refine_topic") === "on",
   };
 
   try {

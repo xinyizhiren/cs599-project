@@ -71,6 +71,32 @@ RAG_DOMAIN_APP_SIGNALS = (
     "globular",
     "novice math",
     "bachelor project",
+    "immunogenicity",
+    "protein drugs",
+    "metaverse",
+    "turkish language",
+    "urban studies",
+    "traditional chinese",
+    "corporate",
+)
+RAG_CORE_METHOD_SIGNALS = (
+    "survey",
+    "review",
+    "benchmark",
+    "evaluation",
+    "taxonomy",
+    "method",
+    "architecture",
+    "framework",
+    "system",
+    "agentic",
+    "graph",
+    "faithful",
+    "adaptive",
+    "robust",
+    "security",
+    "retriever",
+    "rerank",
 )
 RAG_LENS_DIMENSIONS: dict[str, tuple[str, ...]] = {
     "Survey & Taxonomy": ("survey", "review", "taxonomy", "sok", "systematic"),
@@ -171,10 +197,14 @@ def score_paper(paper: PaperRecord, terms: list[str], topic: str = "") -> float:
             score += 2.0
         score += sum(2.0 for signal in RAG_TITLE_SIGNALS if signal in title)
         score += min(4.0, sum(0.5 for signal in RAG_SYSTEM_SIGNALS if signal in combined))
-        if any(signal in title for signal in RAG_DOMAIN_APP_SIGNALS) and not any(
-            signal in title for signal in RAG_TITLE_SIGNALS
-        ):
-            score -= 3.0
+        has_core_method_signal = any(signal in title for signal in RAG_CORE_METHOD_SIGNALS)
+        has_domain_drift = any(signal in title for signal in RAG_DOMAIN_APP_SIGNALS)
+        if has_domain_drift and not has_core_method_signal:
+            score -= 7.0
+        if re.search(r"\bfor\b", title) and not has_core_method_signal:
+            score -= 4.0
+        if paper.source == "crossref" and has_domain_drift and not has_core_method_signal:
+            score -= 2.0
     return max(0.0, score)
 
 
@@ -613,6 +643,66 @@ def _paper_payload(paper: PaperRecord) -> dict[str, Any]:
     }
 
 
+def _clean_llm_text(value: Any, max_length: int = 180) -> str:
+    text = normalize_topic(str(value or ""))
+    if len(text) > max_length:
+        return text[:max_length].rstrip()
+    return text
+
+
+def _clean_llm_list(value: Any, max_items: int, max_length: int = 140) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = _clean_llm_text(item, max_length=max_length)
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) >= max_items:
+            break
+    return cleaned
+
+
+def refine_topic_with_llm(topic: str, provider: str) -> dict[str, Any]:
+    """Use an optional LLM to turn a fuzzy topic into a searchable review scope."""
+
+    client = build_llm_client(provider)
+    system_prompt = (
+        "You help a literature-review agent clarify vague research topics before search. "
+        "Return only a JSON object with keys refined_topic, research_questions, "
+        "adjacent_topics, query_hints, and scope_notes. refined_topic must be a concise "
+        "English academic search topic. research_questions should be 3-5 questions. "
+        "adjacent_topics should contain 2-3 related but not identical angles worth checking. "
+        "query_hints should contain 3-5 search queries. Do not include citations, URLs, "
+        "paper titles, or hidden reasoning."
+    )
+    payload = client.generate_json(
+        system_prompt,
+        {
+            "raw_topic": topic,
+            "task": "Refine the topic for broad, authoritative literature search.",
+        },
+    )
+    refined_topic = _clean_llm_text(payload.get("refined_topic"), max_length=160)
+    if len(refined_topic) < 4:
+        raise LLMError("LLM topic refinement did not return a usable refined_topic.")
+
+    return {
+        "original_topic": normalize_topic(topic),
+        "refined_topic": refined_topic,
+        "research_questions": _clean_llm_list(payload.get("research_questions"), max_items=5),
+        "adjacent_topics": _clean_llm_list(payload.get("adjacent_topics"), max_items=3),
+        "query_hints": _clean_llm_list(payload.get("query_hints"), max_items=5),
+        "scope_notes": _clean_llm_text(payload.get("scope_notes"), max_length=260),
+    }
+
+
 def chunk_papers_for_llm(
     papers: list[PaperRecord],
     max_batch_chars: int = DEFAULT_LLM_BATCH_CHARS,
@@ -869,12 +959,50 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def node_plan_queries(state: ResearchState) -> dict[str, Any]:
     requested_source = state["requested_source"]
-    return {"query_plan": plan_queries(state["topic"], source=requested_source)}
+    effective_topic = state["topic"]
+    refinement: dict[str, Any] = {
+        "original_topic": state["topic"],
+        "refined_topic": "",
+        "research_questions": [],
+        "adjacent_topics": [],
+        "query_hints": [],
+        "scope_notes": "",
+    }
+    refinement_used = False
+    refinement_fallback_reason = ""
+
+    if state.get("refine_topic"):
+        provider = state.get("llm_provider", "off")
+        if provider != "deepseek":
+            refinement_fallback_reason = "Topic refinement requires --llm deepseek."
+        else:
+            try:
+                refinement = refine_topic_with_llm(state["topic"], provider=provider)
+                effective_topic = refinement["refined_topic"]
+                refinement_used = True
+            except LLMError as exc:
+                refinement_fallback_reason = str(exc)
+
+    query_plan = plan_queries(
+        effective_topic,
+        source=requested_source,
+        adjacent_topics=refinement.get("adjacent_topics", []),
+        query_hints=refinement.get("query_hints", []),
+        from_year=int(state.get("from_year") or DEFAULT_FROM_YEAR),
+    )
+    return {
+        "effective_topic": effective_topic,
+        "refined_topic": refinement.get("refined_topic", "") if refinement_used else "",
+        "topic_refinement": refinement,
+        "topic_refinement_used": refinement_used,
+        "topic_refinement_fallback_reason": refinement_fallback_reason,
+        "query_plan": query_plan,
+    }
 
 
 def node_search_papers(state: ResearchState) -> dict[str, Any]:
     raw_papers, actual_source, fallback_reason = search_selected_sources(
-        topic=state["topic"],
+        topic=state.get("effective_topic", state["topic"]),
         query_plan=state["query_plan"],
         sources=state.get("selected_sources", [state["requested_source"]]),
         limit=int(state.get("candidate_limit", max(int(state["top_k"]) * 4, 10))),
@@ -896,14 +1024,15 @@ def node_search_papers(state: ResearchState) -> dict[str, Any]:
 
 
 def node_rank_papers(state: ResearchState) -> dict[str, Any]:
-    ranked_candidates = rank_all_papers(state["searched_papers"], state["topic"])
+    effective_topic = state.get("effective_topic", state["topic"])
+    ranked_candidates = rank_all_papers(state["searched_papers"], effective_topic)
     selected_papers = ranked_candidates[: int(state["top_k"])]
     return {
         "ranked_candidates": ranked_candidates,
         "selected_papers": selected_papers,
-        "research_lens": build_research_lens(state["topic"], selected_papers),
+        "research_lens": build_research_lens(effective_topic, selected_papers),
         "corpus_profile": build_corpus_profile(
-            state["topic"],
+            effective_topic,
             ranked_candidates,
             selected_papers,
             state.get("from_year"),
@@ -941,7 +1070,12 @@ def node_extract_evidence(state: ResearchState) -> dict[str, Any]:
 
 
 def node_synthesize_claims(state: ResearchState) -> dict[str, Any]:
-    return {"claims": synthesize_claims(state["topic"], state["evidence_items"])}
+    return {
+        "claims": synthesize_claims(
+            state.get("effective_topic", state["topic"]),
+            state["evidence_items"],
+        )
+    }
 
 
 def node_check_citations(state: ResearchState) -> dict[str, Any]:
@@ -949,8 +1083,9 @@ def node_check_citations(state: ResearchState) -> dict[str, Any]:
 
 
 def node_write_report(state: ResearchState) -> dict[str, Any]:
+    report_topic = state.get("effective_topic", state["topic"])
     report_markdown = render_report(
-        topic=state["topic"],
+        topic=report_topic,
         selected_papers=state["selected_papers"],
         evidence_items=state["evidence_items"],
         claims=state["claims"],
@@ -967,7 +1102,7 @@ def node_write_report(state: ResearchState) -> dict[str, Any]:
     if state.get("llm_provider") == "deepseek":
         try:
             report_markdown = polish_background_with_llm(
-                state["topic"],
+                report_topic,
                 report_markdown,
                 state["selected_papers"],
                 provider="deepseek",
@@ -1020,6 +1155,7 @@ def run_research(
     candidate_multiplier: int = DEFAULT_CANDIDATE_MULTIPLIER,
     max_candidates: int | None = None,
     from_year: int | None = DEFAULT_FROM_YEAR,
+    refine_topic: bool = False,
 ) -> ResearchResult:
     if not topic.strip():
         raise ValueError("Research topic cannot be empty.")
@@ -1038,6 +1174,8 @@ def run_research(
     initial_state: ResearchState = {
         "task_id": task_id,
         "topic": topic.strip(),
+        "effective_topic": topic.strip(),
+        "refine_topic": refine_topic,
         "top_k": top_k,
         "candidate_multiplier": max(1, candidate_multiplier),
         "candidate_limit": candidate_limit,
@@ -1096,6 +1234,13 @@ def run_research(
             {
                 "task_id": task_id,
                 "topic": topic.strip(),
+                "effective_topic": final_state.get("effective_topic", topic.strip()),
+                "topic_refinement": _serialize(final_state.get("topic_refinement", {})),
+                "topic_refinement_used": bool(final_state.get("topic_refinement_used", False)),
+                "topic_refinement_fallback_reason": final_state.get(
+                    "topic_refinement_fallback_reason",
+                    "",
+                ),
                 "graph_runtime": final_state.get("graph_runtime", ""),
                 "query_plan": _serialize(final_state.get("query_plan", [])),
                 "searched_papers": _serialize(final_state.get("searched_papers", [])),
@@ -1149,6 +1294,7 @@ def evaluate_benchmark(
             ),
             max_candidates=task.get("max_candidates"),
             from_year=task.get("from_year", DEFAULT_FROM_YEAR),
+            refine_topic=bool(task.get("refine_topic", False)),
             write_trace=False,
         )
         result_payload = result.to_dict()

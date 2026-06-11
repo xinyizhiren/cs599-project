@@ -10,6 +10,12 @@ from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, Query
 class ResearchState(TypedDict, total=False):
     task_id: str
     topic: str
+    effective_topic: str
+    refine_topic: bool
+    refined_topic: str
+    topic_refinement: dict[str, Any]
+    topic_refinement_used: bool
+    topic_refinement_fallback_reason: str
     top_k: int
     candidate_multiplier: int
     candidate_limit: int
