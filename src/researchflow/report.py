@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 import re
 from typing import Any
 
@@ -42,7 +42,7 @@ def render_report(
         evidence_by_paper[item.paper_id].append(item)
 
     check_by_paper = {check.paper_id: check for check in citation_checks}
-    generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     query_plan = query_plan or []
     source_label = actual_source or "unknown"
     top_sources = ", ".join(sorted({paper.source for paper in selected_papers})) or source_label
@@ -292,7 +292,7 @@ def render_summary_report(state: dict[str, Any]) -> str:
     corpus_profile = state.get("corpus_profile", {})
     temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {})
     candidate_count = int(corpus_profile.get("candidate_count", len(state.get("searched_papers", []))))
-    generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     dominant_dimensions = _dominant_dimensions(research_lens)
     dimension_names = "、".join(_dimension_label(name) for name, _ in dominant_dimensions[:4])

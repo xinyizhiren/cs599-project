@@ -12,7 +12,7 @@ import json
 import mimetypes
 import threading
 import traceback
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -100,7 +100,7 @@ STEP_DEFINITIONS: list[dict[str, str]] = [
 
 
 def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _new_step(definition: dict[str, str]) -> dict[str, Any]:

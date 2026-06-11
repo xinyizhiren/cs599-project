@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -135,7 +135,7 @@ def slugify(value: str, max_length: int = 48) -> str:
 
 
 def make_task_id(topic: str) -> str:
-    stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     return f"{stamp}-{slugify(topic, 32)}"
 
 
@@ -402,7 +402,7 @@ def build_temporal_profile(papers: list[PaperRecord]) -> dict[str, Any]:
             "last_5_year_ratio": 0.0,
         }
 
-    current_year = datetime.now(UTC).year
+    current_year = datetime.now(timezone.utc).year
     year_counts: dict[int, int] = {}
     for year in years:
         year_counts[year] = year_counts.get(year, 0) + 1
