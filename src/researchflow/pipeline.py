@@ -23,8 +23,10 @@ from .report import render_process_markdown, render_report, render_summary_repor
 from .state import ResearchState
 from .tools import (
     ArxivSearchError,
+    CrossrefSearchError,
     SemanticScholarSearchError,
     search_arxiv,
+    search_crossref,
     search_semantic_scholar,
 )
 
@@ -214,16 +216,45 @@ def dedupe_papers(papers: list[PaperRecord]) -> list[PaperRecord]:
     seen: set[str] = set()
     unique: list[PaperRecord] = []
     for paper in papers:
-        title_key = re.sub(r"\W+", "", paper.title.lower())
-        key = paper.doi or paper.arxiv_id or paper.paper_id or paper.url or title_key
-        if title_key in seen:
+        key, title_key = paper_dedupe_keys(paper)
+        if title_key and title_key in seen:
             continue
         if key in seen:
             continue
         seen.add(key)
-        seen.add(title_key)
+        if title_key:
+            seen.add(title_key)
         unique.append(paper)
     return unique
+
+
+def paper_dedupe_keys(paper: PaperRecord) -> tuple[str, str]:
+    title_key = re.sub(r"\W+", "", paper.title.lower())
+    key = paper.doi or paper.arxiv_id or paper.paper_id or paper.url or title_key
+    return key, title_key
+
+
+def balanced_merge_papers(source_groups: list[list[PaperRecord]], limit: int) -> list[PaperRecord]:
+    """Round-robin sources so hybrid search is not dominated by the first source."""
+
+    seen: set[str] = set()
+    merged: list[PaperRecord] = []
+    max_len = max((len(group) for group in source_groups), default=0)
+    for index in range(max_len):
+        for group in source_groups:
+            if index >= len(group):
+                continue
+            paper = group[index]
+            key, title_key = paper_dedupe_keys(paper)
+            if key in seen or (title_key and title_key in seen):
+                continue
+            seen.add(key)
+            if title_key:
+                seen.add(title_key)
+            merged.append(paper)
+            if len(merged) >= limit:
+                return merged
+    return merged
 
 
 def _search_arxiv_queries(query_plan: list[Any], limit: int) -> tuple[list[PaperRecord], list[str]]:
@@ -247,6 +278,21 @@ def _search_semantic_scholar_queries(
         try:
             collected.extend(search_semantic_scholar(query.query_text, limit=limit))
         except SemanticScholarSearchError as exc:
+            errors.append(str(exc))
+    return collected, errors
+
+
+def _search_crossref_queries(
+    query_plan: list[Any],
+    limit: int,
+    from_year: int | None = None,
+) -> tuple[list[PaperRecord], list[str]]:
+    collected: list[PaperRecord] = []
+    errors: list[str] = []
+    for query in query_plan[:3]:
+        try:
+            collected.extend(search_crossref(query.query_text, limit=limit, from_year=from_year))
+        except CrossrefSearchError as exc:
             errors.append(str(exc))
     return collected, errors
 
@@ -278,13 +324,43 @@ def search_source(
         fallback_reason = "; ".join(errors) or "Semantic Scholar returned no papers."
         return search_offline(topic, limit=limit), "offline", fallback_reason
 
+    if source == "crossref":
+        from_year = None
+        if query_plan:
+            filters = getattr(query_plan[0], "filters", {})
+            if isinstance(filters, dict):
+                from_year = filters.get("from_year")
+        collected, errors = _search_crossref_queries(query_plan, limit, from_year=from_year)
+        unique = dedupe_papers(collected)
+        if unique:
+            return unique[:limit], "crossref", None
+        fallback_reason = "; ".join(errors) or "Crossref returned no papers."
+        return search_offline(topic, limit=limit), "offline", fallback_reason
+
     if source == "hybrid":
         arxiv_papers, arxiv_errors = _search_arxiv_queries(query_plan[:2], limit)
         semantic_papers, semantic_errors = _search_semantic_scholar_queries(query_plan[:2], limit)
-        unique = dedupe_papers(arxiv_papers + semantic_papers)
+        from_year = None
+        if query_plan:
+            filters = getattr(query_plan[0], "filters", {})
+            if isinstance(filters, dict):
+                from_year = filters.get("from_year")
+        crossref_papers, crossref_errors = _search_crossref_queries(
+            query_plan[:2],
+            limit,
+            from_year=from_year,
+        )
+        unique = balanced_merge_papers(
+            [
+                dedupe_papers(arxiv_papers),
+                dedupe_papers(semantic_papers),
+                dedupe_papers(crossref_papers),
+            ],
+            limit=limit,
+        )
         if unique:
             return unique[:limit], "hybrid", None
-        errors = arxiv_errors + semantic_errors
+        errors = arxiv_errors + semantic_errors + crossref_errors
         fallback_reason = "; ".join(errors) or "Hybrid search returned no papers."
         return search_offline(topic, limit=limit), "offline", fallback_reason
 

@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 
 from researchflow.models import PaperRecord
-from researchflow.pipeline import build_research_lens, rank_papers, run_research
+from researchflow.pipeline import balanced_merge_papers, build_research_lens, rank_papers, run_research
 
 
 def test_run_research_offline_generates_report() -> None:
@@ -87,23 +87,75 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
             )
         ]
 
+    def fake_crossref(
+        query: str,
+        limit: int = 20,
+        from_year: int | None = None,
+    ) -> list[PaperRecord]:
+        return [
+            PaperRecord(
+                paper_id="crossref:10.1234/research-agent",
+                title="Published Evidence-Grounded Research Agent Study",
+                authors=["C. Author"],
+                year=2025,
+                abstract="This published paper studies evidence-grounded research agents.",
+                url="https://doi.org/10.1234/research-agent",
+                doi="10.1234/research-agent",
+                source="crossref",
+                citation_count=12,
+            )
+        ]
+
     monkeypatch.setattr("researchflow.pipeline.search_arxiv", fake_arxiv)
     monkeypatch.setattr("researchflow.pipeline.search_semantic_scholar", fake_semantic_scholar)
+    monkeypatch.setattr("researchflow.pipeline.search_crossref", fake_crossref)
 
     result = run_research(
         "agentic literature review agents",
-        top_k=2,
+        top_k=3,
         source="hybrid",
         output=str(output),
         write_trace=False,
     )
 
     assert result.status == "success"
-    assert len(result.selected_papers) == 2
+    assert len(result.selected_papers) == 3
     assert result.metrics["actual_source"] == "hybrid"
+    assert any(paper.source == "crossref" for paper in result.selected_papers)
     report = output.read_text(encoding="utf-8")
     assert "Executive Summary" in report
     assert "Evidence Ledger" in report
+
+
+def test_balanced_merge_papers_prevents_source_starvation() -> None:
+    arxiv_papers = [
+        PaperRecord(
+            paper_id=f"arxiv:{index}",
+            title=f"Arxiv Paper {index}",
+            authors=["A. Author"],
+            year=2025,
+            abstract="RAG paper.",
+            url=f"https://arxiv.org/abs/{index}",
+            source="arxiv",
+        )
+        for index in range(10)
+    ]
+    crossref_papers = [
+        PaperRecord(
+            paper_id="crossref:10.1234/example",
+            title="Published RAG Paper",
+            authors=["C. Author"],
+            year=2025,
+            abstract="Published RAG paper.",
+            url="https://doi.org/10.1234/example",
+            doi="10.1234/example",
+            source="crossref",
+        )
+    ]
+
+    merged = balanced_merge_papers([arxiv_papers, crossref_papers], limit=4)
+
+    assert [paper.source for paper in merged] == ["arxiv", "crossref", "arxiv", "arxiv"]
 
 
 def test_rag_ranking_and_lens_prioritize_core_literature() -> None:

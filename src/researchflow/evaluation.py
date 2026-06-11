@@ -112,7 +112,13 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     expected_nodes = 7
     tool_call_correctness = (
         1.0
-        if state.get("actual_source") in {"offline", "arxiv", "semantic_scholar", "hybrid"}
+        if state.get("actual_source") in {
+            "offline",
+            "arxiv",
+            "semantic_scholar",
+            "crossref",
+            "hybrid",
+        }
         and searched
         else 0.0
     )

@@ -38,8 +38,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--source",
         default="offline",
-        choices=["offline", "arxiv", "semantic_scholar", "semantic-scholar", "hybrid"],
-        help="Paper data source. Use hybrid for live arXiv + Semantic Scholar search.",
+        choices=[
+            "offline",
+            "arxiv",
+            "semantic_scholar",
+            "semantic-scholar",
+            "crossref",
+            "hybrid",
+        ],
+        help="Paper data source. Use hybrid for live arXiv + Semantic Scholar + Crossref search.",
     )
     run_parser.add_argument("--output", default=None, help="Markdown report output path.")
     run_parser.add_argument(

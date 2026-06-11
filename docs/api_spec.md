@@ -24,7 +24,7 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --candidate-multiplier | int | 否 | 8 | 候选池规模倍数，候选池约为 top_k * multiplier |
 | --max-candidates | int | 否 | 无 | 显式候选池上限，优先级高于 candidate multiplier |
 | --from-year | int | 否 | 2020 | 候选论文起始年份；设为 0 可关闭年份过滤 |
-| --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、hybrid |
+| --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、crossref、hybrid |
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
 | --summary-output | path | 否 | 无 | 最终综合总结 Markdown 输出路径 |
 | --process-output | path | 否 | 无 | 调研过程记录 Markdown 输出路径 |
@@ -355,7 +355,7 @@ def write_report(
 
 ## 9. 兼容性计划
 
-MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture、arXiv XML 解析/检索、Semantic Scholar JSON 解析/检索和 hybrid 多源检索；OpenAlex 和 Crossref 校验作为后续工具接入。后续可将 Tool 层暴露为 MCP server：
+MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture、arXiv XML 解析/检索、Semantic Scholar JSON 解析/检索、Crossref DOI 元数据检索和 hybrid 多源检索；OpenAlex 和 Crossref 深度校验作为后续工具接入。后续可将 Tool 层暴露为 MCP server：
 
 | MCP Tool | 对应内部函数 |
 | --- | --- |
