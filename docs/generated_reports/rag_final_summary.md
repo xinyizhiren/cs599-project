@@ -1,6 +1,6 @@
 # 领域调研总结：retrieval augmented generation for large language models
 
-- 生成时间：2026-06-11 04:23 UTC
+- 生成时间：2026-06-11 05:55 UTC
 - 联网来源：`arxiv`
 - 核心文献数：8
 - 引用校验通过率：1.000
@@ -64,26 +64,25 @@ Lens coverage: 1.000；缺失方向：无明显缺口。
 
 | 序号 | 论文 | 年份 | 来源 | 关键证据摘要 | URL |
 | ---: | --- | ---: | --- | --- | --- |
-| 1 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 2025 | arxiv | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Source Large Language Models contributes ev... | http://arxiv.org/abs/2503.16581v1 |
-| 2 | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries | 2024 | arxiv | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries contributes evidence about retrieval-augmented... | http://arxiv.org/abs/2401.15391v1 |
-| 3 | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 2025 | arxiv | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG contributes evidence about large language models (llms) have ad... | http://arxiv.org/abs/2501.09136v4 |
-| 4 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 2026 | arxiv | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm contributes evidence about as an important p... | http://arxiv.org/abs/2603.26668v2 |
-| 5 | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation | 2025 | arxiv | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation contributes evidence about while retrieval-... | http://arxiv.org/abs/2510.22344v1 |
-| 6 | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance | 2025 | arxiv | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance contributes evidence about retrieval-augmented gene... | http://arxiv.org/abs/2501.03995v1 |
-| 7 | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation | 2026 | arxiv | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation contributes evidence about large language models (llms) are wide... | http://arxiv.org/abs/2604.18509v2 |
-| 8 | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conv... | 2026 | arxiv | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conversational Agents contributes evidence a... | http://arxiv.org/abs/2605.24366v1 |
+| 1 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Sou... | 2025 | arxiv | Large models outperform smaller models in query semantics and response accuracy | http://arxiv.org/abs/2503.16581v1 |
+| 2 | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries | 2024 | arxiv | MultiHop-RAG dataset addresses lack of benchmarking for multi-hop queries | http://arxiv.org/abs/2401.15391v1 |
+| 3 | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 2025 | arxiv | Agentic RAG transcends traditional RAG by embedding autonomous AI agents | http://arxiv.org/abs/2501.09136v4 |
+| 4 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 2026 | arxiv | Bridge-RAG uses an abstract bridge tree and Cuckoo Filter for efficient retrieval | http://arxiv.org/abs/2603.26668v2 |
+| 5 | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation | 2025 | arxiv | FAIR-RAG uses Iterative Refinement Cycle with Structured Evidence Assessment | http://arxiv.org/abs/2510.22344v1 |
+| 6 | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance | 2025 | arxiv | RAG-Check framework evaluates reliability of multi-modal RAG with RS and CS scores | http://arxiv.org/abs/2501.03995v1 |
+| 7 | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation | 2026 | arxiv | MASS-RAG uses multiple role-specialized agents for evidence summarization, extraction, and reasoning | http://arxiv.org/abs/2604.18509v2 |
+| 8 | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conv... | 2026 | arxiv | SA-RAG uses tables as intermediate structured representation to reduce noise | http://arxiv.org/abs/2605.24366v1 |
 
 ## 可追溯性
 
 - 完整文献调研报告：`docs\generated_reports\rag_live_literature_review.md`
 - 调研过程记录：`docs\generated_reports\rag_live_research_process.md`
 - Trace：`见 data/runtime 目录`
-- LLM provider：`deepseek`；LLM used：`false`
-- LLM fallback：DeepSeek request failed: HTTP Error 401: Authorization Required; Report polish fallback: DeepSeek request failed: HTTP Error 401: Authorization Required
+- LLM provider：`deepseek`；LLM used：`true`
 
 ## Claim-Evidence 索引
 
 | Claim | Evidence IDs |
 | --- | --- |
-| Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded wor... | `e1-contribution`, `e2-contribution`, `e3-contribution`, `e4-contribution` |
-| A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `e1-limitation`, `e2-limitation`, `e3-limitation` |
+| Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded wor... | `llm-arxiv-2503-16581v1-1`, `llm-arxiv-2503-16581v1-2`, `llm-arxiv-2401-15391v1-1`, `llm-arxiv-2401-15391v1-2` |
+| A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `llm-arxiv-2501-09136v4-2` |

@@ -4,7 +4,7 @@ This file records observable Agent actions and artifacts. It is not a hidden cha
 
 ## Run Summary
 
-- Task ID: `20260611042252-retrieval-augmented-generation-f`
+- Task ID: `20260611055444-retrieval-augmented-generation-f`
 - Requested source: `arxiv`
 - Actual source: `arxiv`
 - Fallback reason: None
@@ -12,8 +12,8 @@ This file records observable Agent actions and artifacts. It is not a hidden cha
 - Summary path: `docs\generated_reports\rag_final_summary.md`
 - Graph runtime: `sequential`
 - LLM provider: `deepseek`
-- LLM used: `false`
-- LLM fallback reason: DeepSeek request failed: HTTP Error 401: Authorization Required; Report polish fallback: DeepSeek request failed: HTTP Error 401: Authorization Required
+- LLM used: `true`
+- LLM fallback reason: None
 
 ## Query Plan
 
@@ -78,29 +78,29 @@ A domain-aware lens that checks whether selected RAG papers cover survey, retrie
 
 | Evidence ID | Paper ID | Category | Confidence | Claim |
 | --- | --- | --- | ---: | --- |
-| `e1-contribution` | `arxiv:2503.16581v1` | contribution | 0.78 | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Source Large Language Models contributes evidence about accurate and contextually faithful re... |
-| `e1-limitation` | `arxiv:2503.16581v1` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open... |
-| `e2-contribution` | `arxiv:2401.15391v1` | contribution | 0.78 | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries contributes evidence about retrieval-augmented generation (rag) augments large language models (l... |
-| `e2-limitation` | `arxiv:2401.15391v1` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries. |
-| `e3-contribution` | `arxiv:2501.09136v4` | contribution | 0.78 | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG contributes evidence about large language models (llms) have advanced artificial intelligence by enabling human-l... |
-| `e3-limitation` | `arxiv:2501.09136v4` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG. |
-| `e4-contribution` | `arxiv:2603.26668v2` | contribution | 0.78 | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm contributes evidence about as an important paradigm for enhancing the generation quality of la... |
-| `e4-limitation` | `arxiv:2603.26668v2` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm. |
-| `e5-contribution` | `arxiv:2510.22344v1` | contribution | 0.78 | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation contributes evidence about while retrieval-augmented generation (rag) mitigates hallucination... |
-| `e5-limitation` | `arxiv:2510.22344v1` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation. |
-| `e6-contribution` | `arxiv:2501.03995v1` | contribution | 0.78 | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance contributes evidence about retrieval-augmented generation (rag) improves large language models (llms)... |
-| `e6-limitation` | `arxiv:2501.03995v1` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance. |
-| `e7-contribution` | `arxiv:2604.18509v2` | contribution | 0.78 | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation contributes evidence about large language models (llms) are widely used in retrieval-augmented generation (rag) to... |
-| `e7-limitation` | `arxiv:2604.18509v2` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation. |
-| `e8-contribution` | `arxiv:2605.24366v1` | contribution | 0.78 | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conversational Agents contributes evidence about large language models (llms) have been widely... |
-| `e8-limitation` | `arxiv:2605.24366v1` | limitation | 0.62 | The current MVP only sees metadata and abstracts, so full-text validation is still needed for Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for... |
+| `llm-arxiv-2503-16581v1-1` | `arxiv:2503.16581v1` | experiment | 0.65 | Large models outperform smaller models in query semantics and response accuracy |
+| `llm-arxiv-2503-16581v1-2` | `arxiv:2503.16581v1` | experiment | 0.65 | Llama3.2:3b achieves high faithfulness and relevance despite being small |
+| `llm-arxiv-2401-15391v1-1` | `arxiv:2401.15391v1` | contribution | 0.65 | MultiHop-RAG dataset addresses lack of benchmarking for multi-hop queries |
+| `llm-arxiv-2401-15391v1-2` | `arxiv:2401.15391v1` | experiment | 0.65 | Existing RAG methods perform unsatisfactorily in retrieving and answering multi-hop queries |
+| `llm-arxiv-2501-09136v4-1` | `arxiv:2501.09136v4` | contribution | 0.65 | Agentic RAG transcends traditional RAG by embedding autonomous AI agents |
+| `llm-arxiv-2501-09136v4-2` | `arxiv:2501.09136v4` | future_work | 0.65 | Open challenges in Agentic RAG include evaluation, coordination, memory management, efficiency, and governance |
+| `llm-arxiv-2603-26668v2-1` | `arxiv:2603.26668v2` | method | 0.65 | Bridge-RAG uses an abstract bridge tree and Cuckoo Filter for efficient retrieval |
+| `llm-arxiv-2603-26668v2-2` | `arxiv:2603.26668v2` | experiment | 0.65 | Bridge-RAG achieves up to 1.9x faster retrieval and consistent accuracy improvements |
+| `llm-arxiv-2510-22344v1-1` | `arxiv:2510.22344v1` | method | 0.65 | FAIR-RAG uses Iterative Refinement Cycle with Structured Evidence Assessment |
+| `llm-arxiv-2510-22344v1-2` | `arxiv:2510.22344v1` | experiment | 0.65 | FAIR-RAG achieves state-of-the-art F1-score of 0.453 on HotpotQA, 8.3 points over iterative baseline |
+| `llm-arxiv-2501-03995v1-1` | `arxiv:2501.03995v1` | contribution | 0.65 | RAG-Check framework evaluates reliability of multi-modal RAG with RS and CS scores |
+| `llm-arxiv-2501-03995v1-2` | `arxiv:2501.03995v1` | experiment | 0.65 | RS and CS models achieve ~88% accuracy, RS aligns with human preferences 20% more than CLIP |
+| `llm-arxiv-2604-18509v2-1` | `arxiv:2604.18509v2` | method | 0.65 | MASS-RAG uses multiple role-specialized agents for evidence summarization, extraction, and reasoning |
+| `llm-arxiv-2604-18509v2-2` | `arxiv:2604.18509v2` | experiment | 0.65 | MASS-RAG consistently improves performance over strong RAG baselines on four benchmarks |
+| `llm-arxiv-2605-24366v1-1` | `arxiv:2605.24366v1` | method | 0.65 | SA-RAG uses tables as intermediate structured representation to reduce noise |
+| `llm-arxiv-2605-24366v1-2` | `arxiv:2605.24366v1` | experiment | 0.65 | SA-RAG significantly outperforms existing RAG baselines on two noisy real-world datasets |
 
 ## Claim-Evidence Alignment
 
 | Claim ID | Type | Claim | Evidence IDs |
 | --- | --- | --- | --- |
-| `c1` | Synthesis | Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded workflows. | `e1-contribution`, `e2-contribution`, `e3-contribution`, `e4-contribution` |
-| `c2` | Hypothesis | A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `e1-limitation`, `e2-limitation`, `e3-limitation` |
+| `c1` | Synthesis | Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded workflows. | `llm-arxiv-2503-16581v1-1`, `llm-arxiv-2503-16581v1-2`, `llm-arxiv-2401-15391v1-1`, `llm-arxiv-2401-15391v1-2` |
+| `c2` | Hypothesis | A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `llm-arxiv-2501-09136v4-2` |
 
 ## Citation Checks
 
@@ -148,10 +148,10 @@ A domain-aware lens that checks whether selected RAG papers cover survey, retrie
 | `actual_source` | `arxiv` |
 | `fallback_reason` | `` |
 | `llm_provider` | `deepseek` |
-| `llm_used` | `False` |
-| `llm_fallback_reason` | `DeepSeek request failed: HTTP Error 401: Authorization Required; Report polish fallback: DeepSeek request failed: HTTP Error 401: Authorization Required` |
+| `llm_used` | `True` |
+| `llm_fallback_reason` | `` |
 | `research_lens_coverage` | `1.0` |
 | `graph_runtime` | `sequential` |
-| `dimension_scores` | `task_completion: 20.0, retrieval_quality: 20.0, evidence_trust: 25.0, report_quality: 20.0, agent_behavior: 15.0` |
-| `overall_score` | `100.0` |
+| `dimension_scores` | `task_completion: 20.0, retrieval_quality: 20.0, evidence_trust: 25.0, report_quality: 17.5, agent_behavior: 15.0` |
+| `overall_score` | `97.5` |
 | `live_requirement_met` | `True` |
