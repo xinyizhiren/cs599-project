@@ -646,35 +646,19 @@ h1 {
   font-size: 12px;
 }
 
+.query-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
 .report-section {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   border-bottom: 0;
-}
-
-.report-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.tab {
-  height: 32px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: white;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 720;
-}
-
-.tab.active {
-  border-color: var(--text);
-  background: var(--text);
-  color: white;
 }
 
 .download-actions {
@@ -699,21 +683,93 @@ h1 {
   opacity: 0.5;
 }
 
-.report-preview {
-  flex: 1;
-  min-height: 220px;
+.download-status {
   margin: 0;
-  padding: 12px;
-  overflow: auto;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #101418;
-  color: #ecf2f8;
-  font-family:
-    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  background: #fbfcfe;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-section {
+  display: flex;
+  min-height: 0;
+  max-height: 420px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.quick-actions button,
+.chat-form button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfe;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.quick-actions button:disabled,
+.chat-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chat-messages {
+  display: grid;
+  gap: 8px;
+  min-height: 96px;
+  max-height: 170px;
+  overflow: auto;
+}
+
+.chat-message {
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.chat-message.assistant {
+  border-color: #bcd0ff;
+  background: #f7faff;
+}
+
+.chat-message strong {
+  display: block;
+  color: #344054;
   font-size: 11px;
-  line-height: 1.55;
-  white-space: pre-wrap;
+}
+
+.chat-message p,
+.chat-status {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-message p {
+  margin-top: 5px;
+}
+
+.chat-form {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-form textarea {
+  min-height: 74px;
+  max-height: 120px;
 }
 
 .empty-state {

@@ -9,6 +9,7 @@ from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, Query
 
 class ResearchState(TypedDict, total=False):
     task_id: str
+    session_id: str
     topic: str
     effective_topic: str
     refine_topic: bool
@@ -51,3 +52,11 @@ class ResearchState(TypedDict, total=False):
     errors: list[dict[str, Any]]
     node_trace: list[dict[str, Any]]
     graph_runtime: str
+    conversation_messages: list[dict[str, Any]]
+    revision_history: list[dict[str, Any]]
+    user_constraints: dict[str, Any]
+    excluded_paper_ids: list[str]
+    included_query_angles: list[str]
+    last_conversation_action: str
+    created_at: str
+    updated_at: str

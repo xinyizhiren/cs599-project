@@ -136,17 +136,33 @@
         </section>
 
         <section class="inspector-section report-section">
-          <div class="report-tabs" role="tablist" aria-label="报告视图">
-            <button class="tab active" type="button" data-report="report_markdown">报告</button>
-            <button class="tab" type="button" data-report="summary_markdown">摘要</button>
-            <button class="tab" type="button" data-report="process_markdown">过程</button>
-          </div>
           <div class="download-actions" aria-label="下载 Markdown">
             <button type="button" data-download="report">下载报告</button>
             <button type="button" data-download="summary">下载摘要</button>
             <button type="button" data-download="process">下载过程</button>
           </div>
-          <pre id="report-preview" class="report-preview">暂无报告</pre>
+          <p id="download-status" class="download-status">任务完成后可下载 Markdown 文件。</p>
+        </section>
+
+        <section class="inspector-section chat-section" aria-label="继续对话">
+          <h3>继续调整</h3>
+          <div class="quick-actions" aria-label="快捷调整">
+            <button type="button" data-chat-prompt="多补充 security robustness 方向">补安全方向</button>
+            <button type="button" data-chat-prompt="只看近三年的论文">近三年</button>
+            <button type="button" data-chat-prompt="去掉应用案例论文">少应用论文</button>
+            <button type="button" data-chat-prompt="把总结写得更短">重写摘要</button>
+          </div>
+          <div id="chat-messages" class="chat-messages empty-state">任务完成后可以继续对话调整。</div>
+          <form id="chat-form" class="chat-form">
+            <textarea
+              id="chat-input"
+              name="message"
+              rows="3"
+              placeholder="例如：多补充评测基准方向，或者把总结写得更学术"
+            ></textarea>
+            <button id="chat-send" type="submit">发送</button>
+          </form>
+          <p id="chat-status" class="chat-status">等待可继续的调研会话。</p>
         </section>
       </aside>
     </main>

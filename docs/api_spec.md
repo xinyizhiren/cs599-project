@@ -76,6 +76,40 @@ python -m researchflow evaluate --benchmark examples/benchmarks/basic.jsonl
 python -m researchflow version
 ```
 
+### 2.4 Web 对话接口
+
+启动：
+
+```powershell
+python -m researchflow.web --host 127.0.0.1 --port 7860
+```
+
+新增继续对话接口：
+
+```http
+POST /api/runs/{id}/messages
+Content-Type: application/json
+
+{
+  "message": "多补充 security robustness 方向"
+}
+```
+
+返回：
+
+```json
+{
+  "reply": "已追加 `security_robustness` 方向检索并刷新候选池、核心论文和报告。",
+  "action": "expand_search",
+  "updated": true,
+  "revision": {},
+  "run": {},
+  "snapshots": {}
+}
+```
+
+`action` 支持 `answer_question`、`rewrite_report`、`adjust_scope`、`expand_search`、`filter_papers`、`regenerate_section`。接口不返回隐藏推理链，只返回 action、回复和可审计 revision。
+
 ## 3. 环境变量
 
 | 变量 | 必填 | 说明 |
@@ -139,6 +173,21 @@ def evaluate_benchmark(
 ) -> EvaluationSummary:
     ...
 ```
+
+### 4.3 会话接口
+
+```python
+def load_session(session_id: str) -> dict:
+    ...
+
+def save_session(state: ResearchState, messages: list[dict], artifacts: dict[str, str]) -> Path:
+    ...
+
+def handle_conversation_turn(state: ResearchState, user_message: str) -> dict:
+    ...
+```
+
+会话文件位于 `data/sessions/{session_id}/`，包含 `state.json`、`messages.jsonl`、`report.md`、`summary.md`、`process.md` 和 `revision_history.jsonl`。
 
 ## 5. Tool 接口
 

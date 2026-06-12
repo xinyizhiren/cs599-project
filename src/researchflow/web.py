@@ -21,6 +21,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from .conversation import handle_conversation_turn
 from .models import ResearchResult
 from .pipeline import (
     DEFAULT_CANDIDATE_MULTIPLIER,
@@ -36,6 +37,7 @@ from .pipeline import (
     write_json,
 )
 from .planner import topic_terms
+from .session import list_sessions, load_session, save_session
 from .state import ResearchState
 
 
@@ -46,6 +48,7 @@ DOWNLOAD_KINDS = {
     "summary": ("summary_markdown", "summary.md"),
     "process": ("process_markdown", "process.md"),
 }
+MARKDOWN_SNAPSHOT_KEYS = {key for key, _ in DOWNLOAD_KINDS.values()}
 
 STEP_DEFINITIONS: list[dict[str, str]] = [
     {
@@ -181,9 +184,11 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
     candidate_limit = candidate_limit_for(top_k, candidate_multiplier, request.get("max_candidates"))
     normalized_from_year = normalize_from_year(request.get("from_year"))
     slug = slugify(request["topic"])
+    created_at = _now_iso()
 
     return {
         "task_id": task_id,
+        "session_id": task_id,
         "topic": request["topic"],
         "effective_topic": request["topic"],
         "refine_topic": bool(request.get("refine_topic", False)),
@@ -202,6 +207,14 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
         "llm_fallback_reason": "",
         "errors": [],
         "node_trace": [],
+        "conversation_messages": [],
+        "revision_history": [],
+        "user_constraints": {},
+        "excluded_paper_ids": [],
+        "included_query_angles": [],
+        "last_conversation_action": "",
+        "created_at": created_at,
+        "updated_at": created_at,
     }
 
 
@@ -289,6 +302,7 @@ def _summarize_node(node_name: str, state: ResearchState, update: dict[str, Any]
 
 def _snapshot_state(state: ResearchState) -> dict[str, Any]:
     return {
+        "session_id": state.get("session_id", state.get("task_id", "")),
         "topic": state.get("topic", ""),
         "effective_topic": state.get("effective_topic", state.get("topic", "")),
         "refine_topic": bool(state.get("refine_topic", False)),
@@ -312,12 +326,145 @@ def _snapshot_state(state: ResearchState) -> dict[str, Any]:
         "process_markdown": state.get("process_markdown", ""),
         "actual_source": state.get("actual_source", ""),
         "fallback_reason": state.get("fallback_reason", ""),
+        "conversation_messages": _serialize(state.get("conversation_messages", [])),
+        "revision_history": _serialize(state.get("revision_history", [])),
+        "user_constraints": _serialize(state.get("user_constraints", {})),
+        "excluded_paper_ids": _serialize(state.get("excluded_paper_ids", [])),
+        "included_query_angles": _serialize(state.get("included_query_angles", [])),
+        "last_conversation_action": state.get("last_conversation_action", ""),
+    }
+
+
+def _download_documents(snapshots: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    documents: dict[str, dict[str, Any]] = {}
+    for kind, (key, filename) in DOWNLOAD_KINDS.items():
+        markdown = str(snapshots.get(key, "") or "")
+        documents[kind] = {
+            "ready": bool(markdown),
+            "filename": filename,
+            "chars": len(markdown),
+        }
+    return documents
+
+
+def _without_markdown_output_keys(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    public_items = copy.deepcopy(items)
+    for item in public_items:
+        output_keys = item.get("output_keys")
+        if isinstance(output_keys, list):
+            item["output_keys"] = [key for key in output_keys if key not in MARKDOWN_SNAPSHOT_KEYS]
+    return public_items
+
+
+def _public_snapshots(snapshots: dict[str, Any]) -> dict[str, Any]:
+    compact = {
+        key: value
+        for key, value in snapshots.items()
+        if key not in MARKDOWN_SNAPSHOT_KEYS
+    }
+    if isinstance(compact.get("node_trace"), list):
+        compact["node_trace"] = _without_markdown_output_keys(compact["node_trace"])
+    compact["documents"] = _download_documents(snapshots)
+    return compact
+
+
+def _public_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return _without_markdown_output_keys(steps)
+
+
+def _public_job(job: dict[str, Any], include_detail: bool) -> dict[str, Any]:
+    public = {
+        "id": job["id"],
+        "status": job["status"],
+        "request": job["request"],
+        "current_step": job.get("current_step"),
+        "error": job.get("error"),
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+    }
+    if include_detail:
+        public["steps"] = _public_steps(job.get("steps", []))
+        public["snapshots"] = _public_snapshots(job.get("snapshots", {}))
+        public["result"] = job.get("result")
+        public["messages"] = job.get("messages", [])
+    return public
+
+
+def _steps_from_trace(trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    steps = [_new_step(step) for step in STEP_DEFINITIONS]
+    trace_by_node = {item.get("node"): item for item in trace}
+    for step in steps:
+        trace_item = trace_by_node.get(step["id"])
+        if not trace_item and step["id"] == "understand_topic":
+            step["status"] = "success"
+            step["summary"] = "Loaded from persistent session."
+            step["elapsed_ms"] = 0
+            continue
+        if trace_item:
+            step["status"] = str(trace_item.get("status", "success"))
+            step["elapsed_ms"] = trace_item.get("elapsed_ms")
+            step["summary"] = "Loaded from persistent session."
+            step["output_keys"] = trace_item.get("output_keys", [])
+    return steps
+
+
+def _request_from_state(state: ResearchState) -> dict[str, Any]:
+    return {
+        "topic": state.get("topic", ""),
+        "top_k": state.get("top_k", 5),
+        "source": state.get("requested_source", "offline"),
+        "sources": state.get("selected_sources", [state.get("requested_source", "offline")]),
+        "from_year": state.get("from_year", DEFAULT_FROM_YEAR),
+        "candidate_multiplier": state.get("candidate_multiplier", DEFAULT_CANDIDATE_MULTIPLIER),
+        "max_candidates": state.get("candidate_limit"),
+        "llm": state.get("llm_provider", "off"),
+        "refine_topic": bool(state.get("refine_topic", False)),
+        "require_live": bool(state.get("metrics", {}).get("live_requirement_met") is False),
+    }
+
+
+def _job_from_session(session: dict[str, Any]) -> dict[str, Any]:
+    state: ResearchState = session["state"]
+    artifacts = session.get("artifacts", {})
+    if artifacts.get("report.md"):
+        state["report_markdown"] = artifacts["report.md"]
+    if artifacts.get("summary.md"):
+        state["summary_markdown"] = artifacts["summary.md"]
+    if artifacts.get("process.md"):
+        state["process_markdown"] = artifacts["process.md"]
+    session_id = str(state.get("session_id", state.get("task_id", "")))
+    result = ResearchResult(
+        task_id=session_id,
+        status="success",
+        selected_papers=state.get("selected_papers", []),
+        report_path=str(state.get("report_path", "")),
+        process_path=str(state.get("process_path", "")),
+        summary_path=str(state.get("summary_path", "")),
+        trace_path=None,
+        metrics=state.get("metrics", {}),
+    )
+    return {
+        "id": session_id,
+        "status": "success",
+        "request": _request_from_state(state),
+        "steps": _steps_from_trace(state.get("node_trace", [])),
+        "current_step": None,
+        "snapshots": _snapshot_state(state),
+        "result": result.to_dict(),
+        "error": None,
+        "messages": session.get("messages", []),
+        "state": state,
+        "created_at": state.get("created_at", _now_iso()),
+        "updated_at": state.get("updated_at", _now_iso()),
     }
 
 
 class JobStore:
     def __init__(self) -> None:
-        self._jobs: dict[str, dict[str, Any]] = {}
+        self._jobs: dict[str, dict[str, Any]] = {
+            str(session["state"].get("session_id", session["session_id"])): _job_from_session(session)
+            for session in list_sessions()
+        }
         self._lock = threading.Lock()
 
     def create(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -332,20 +479,27 @@ class JobStore:
             "snapshots": {},
             "result": None,
             "error": None,
+            "messages": [],
+            "state": None,
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
         }
         with self._lock:
             self._jobs[task_id] = job
-        return copy.deepcopy(job)
+        return copy.deepcopy(_public_job(job, include_detail=True))
 
     def list_recent(self) -> list[dict[str, Any]]:
         with self._lock:
             jobs = list(self._jobs.values())
         jobs.sort(key=lambda item: item["created_at"], reverse=True)
-        return copy.deepcopy(jobs[:20])
+        return copy.deepcopy([_public_job(job, include_detail=False) for job in jobs[:20]])
 
     def get(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return copy.deepcopy(_public_job(job, include_detail=True)) if job else None
+
+    def get_internal(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             job = self._jobs.get(job_id)
             return copy.deepcopy(job) if job else None
@@ -357,6 +511,11 @@ class JobStore:
                 return None
             mutator(job)
             job["updated_at"] = _now_iso()
+            return copy.deepcopy(job)
+
+    def upsert(self, job: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            self._jobs[job["id"]] = job
             return copy.deepcopy(job)
 
 
@@ -516,6 +675,16 @@ def _run_web_job(job_id: str) -> None:
         )
 
         status = "success" if live_requirement_met else "failed"
+        state["updated_at"] = _now_iso()
+        save_session(
+            state,
+            messages=state.get("conversation_messages", []),
+            artifacts={
+                "report.md": str(state.get("report_markdown", "")),
+                "summary.md": str(state.get("summary_markdown", "")),
+                "process.md": str(state.get("process_markdown", "")),
+            },
+        )
         result = ResearchResult(
             task_id=job_id,
             status=status,
@@ -531,6 +700,8 @@ def _run_web_job(job_id: str) -> None:
             job["status"] = status
             job["current_step"] = None
             job["result"] = result.to_dict()
+            job["messages"] = state.get("conversation_messages", [])
+            job["state"] = copy.deepcopy(state)
             job["snapshots"] = _snapshot_state(state)
 
         STORE.mutate(job_id, complete_mutation)
@@ -561,6 +732,61 @@ def start_background_run(payload: dict[str, Any]) -> dict[str, Any]:
     thread = threading.Thread(target=_run_web_job, args=(job["id"],), daemon=True)
     thread.start()
     return job
+
+
+def continue_conversation(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    message = str(payload.get("message", "")).strip()
+    if not message:
+        raise ValueError("Conversation message cannot be empty.")
+
+    job = STORE.get_internal(job_id)
+    if not job:
+        session = load_session(job_id)
+        job = STORE.upsert(_job_from_session(session))
+
+    state = job.get("state")
+    if not state:
+        session = load_session(job_id)
+        state = session["state"]
+        state["conversation_messages"] = session["messages"]
+        state["revision_history"] = session["revision_history"]
+
+    if job.get("status") in {"queued", "running"}:
+        raise ValueError("The run is still active; wait until the initial research task finishes.")
+
+    turn = handle_conversation_turn(state, message)
+    state = turn["state"]
+    save_session(state, messages=turn["messages"], artifacts=turn["artifacts"])
+
+    result = ResearchResult(
+        task_id=job_id,
+        status=str(job.get("status", "success")),
+        selected_papers=state.get("selected_papers", []),
+        report_path=str(state.get("report_path", "")),
+        trace_path=str(job.get("result", {}).get("trace_path") or ""),
+        process_path=str(state.get("process_path", "")),
+        summary_path=str(state.get("summary_path", "")),
+        metrics=state.get("metrics", {}),
+    )
+
+    def mutate(current: dict[str, Any]) -> None:
+        current["status"] = "success" if current.get("status") != "failed" else current["status"]
+        current["messages"] = turn["messages"]
+        current["state"] = copy.deepcopy(state)
+        current["snapshots"] = _snapshot_state(state)
+        current["result"] = result.to_dict()
+        current["error"] = None
+
+    STORE.mutate(job_id, mutate)
+    public_job = STORE.get(job_id)
+    return {
+        "reply": turn["reply"],
+        "action": turn["action"],
+        "updated": turn["updated"],
+        "revision": turn["revision"],
+        "run": public_job,
+        "snapshots": public_job.get("snapshots", {}) if public_job else {},
+    }
 
 
 class ResearchFlowHandler(BaseHTTPRequestHandler):
@@ -676,8 +902,12 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
                 self._send_error_json(HTTPStatus.NOT_FOUND, "Run not found.")
                 return
             if len(parts) == 3 and parts[1] == "download" and parts[2] in DOWNLOAD_KINDS:
+                full_job = STORE.get_internal(job_id)
+                if not full_job:
+                    self._send_error_json(HTTPStatus.NOT_FOUND, "Run not found.")
+                    return
                 if send_body:
-                    self._send_markdown_download(job, parts[2])
+                    self._send_markdown_download(full_job, parts[2])
                 else:
                     self._send_json(HTTPStatus.OK, {"status": "ready"}, send_body=False)
                 return
@@ -695,6 +925,23 @@ class ResearchFlowHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - stdlib hook
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
+        if path.startswith("/api/runs/"):
+            parts = path.removeprefix("/api/runs/").strip("/").split("/")
+            if len(parts) == 2 and parts[1] == "messages":
+                try:
+                    payload = self._read_json_body()
+                    response = continue_conversation(parts[0], payload)
+                except FileNotFoundError:
+                    self._send_error_json(HTTPStatus.NOT_FOUND, "Run not found.")
+                    return
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+                    return
+                self._send_json(HTTPStatus.OK, response)
+                return
+            self._send_error_json(HTTPStatus.NOT_FOUND, "Route not found.")
+            return
+
         if path != "/api/runs":
             self._send_error_json(HTTPStatus.NOT_FOUND, "Route not found.")
             return

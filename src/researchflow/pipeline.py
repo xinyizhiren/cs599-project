@@ -20,6 +20,7 @@ from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, Resea
 from .offline_data import OFFLINE_PAPERS
 from .planner import normalize_topic, plan_queries, topic_terms
 from .report import render_process_markdown, render_report, render_summary_report
+from .session import save_session
 from .state import ResearchState
 from .tools import (
     ArxivSearchError,
@@ -1163,6 +1164,7 @@ def run_research(
         raise ValueError("top_k must be greater than 0.")
 
     task_id = make_task_id(topic)
+    created_at = datetime.now(timezone.utc).isoformat()
     requested_source = "offline" if offline else source.replace("-", "_")
     selected_sources = (
         ["arxiv", "semantic_scholar", "crossref"]
@@ -1173,6 +1175,7 @@ def run_research(
     normalized_from_year = normalize_from_year(from_year)
     initial_state: ResearchState = {
         "task_id": task_id,
+        "session_id": task_id,
         "topic": topic.strip(),
         "effective_topic": topic.strip(),
         "refine_topic": refine_topic,
@@ -1191,6 +1194,14 @@ def run_research(
         "llm_fallback_reason": "",
         "errors": [],
         "node_trace": [],
+        "conversation_messages": [],
+        "revision_history": [],
+        "user_constraints": {},
+        "excluded_paper_ids": [],
+        "included_query_angles": [],
+        "last_conversation_action": "",
+        "created_at": created_at,
+        "updated_at": created_at,
     }
     final_state = run_research_graph(initial_state, RESEARCH_NODES)
     metrics = dict(final_state["metrics"])
@@ -1221,10 +1232,27 @@ def run_research(
         summary_markdown = render_summary_report(final_state)
         final_state["summary_markdown"] = summary_markdown
         summary_path.write_text(summary_markdown, encoding="utf-8")
+    elif "summary_markdown" not in final_state:
+        final_state["summary_markdown"] = render_summary_report(final_state)
 
     if process_path:
         process_path.parent.mkdir(parents=True, exist_ok=True)
-        process_path.write_text(render_process_markdown(final_state), encoding="utf-8")
+        process_markdown = render_process_markdown(final_state)
+        final_state["process_markdown"] = process_markdown
+        process_path.write_text(process_markdown, encoding="utf-8")
+    elif "process_markdown" not in final_state:
+        final_state["process_markdown"] = render_process_markdown(final_state)
+
+    final_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_session(
+        final_state,
+        messages=final_state.get("conversation_messages", []),
+        artifacts={
+            "report.md": str(final_state.get("report_markdown", "")),
+            "summary.md": str(final_state.get("summary_markdown", "")),
+            "process.md": str(final_state.get("process_markdown", "")),
+        },
+    )
 
     trace_path: Path | None = None
     if write_trace:

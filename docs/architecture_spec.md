@@ -31,7 +31,7 @@ CLI/API Entry
 | ResearchGraph Orchestrator | 维护任务状态、节点路由、失败重试、trace 和 fallback |
 | Agent Nodes | Topic Refiner、Query Planner、Searcher、Reader、Extractor、Synthesizer、Checker、Reporter |
 | Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、PDF parser、Markdown writer |
-| Storage and Memory | SQLite 存储任务、论文、证据、报告和 trace |
+| Storage and Memory | 本地 session 文件保存任务、消息、论文、证据、报告和 trace；SQLite 作为后续扩展 |
 | Evaluation and Observability | 记录指标、节点日志、benchmark 结果 |
 
 ## 3. Agent 工作流
@@ -52,7 +52,10 @@ flowchart TD
     J -- "No" --> C
     J -- "Yes" --> K["Report Writer"]
     K --> L["Markdown Report"]
-    L --> M["Evaluator"]
+    L --> S["Session Store"]
+    S --> Cn["Conversation Controller"]
+    Cn --> B
+    S --> M["Evaluator"]
     M --> N["Scores and Trace"]
 ```
 
@@ -182,6 +185,7 @@ flowchart TD
 ```python
 class ResearchState(TypedDict):
     task_id: str
+    session_id: str
     topic: str
     effective_topic: str
     refine_topic: bool
@@ -197,6 +201,12 @@ class ResearchState(TypedDict):
     node_trace: list[dict]
     errors: list[dict]
     metrics: dict
+    conversation_messages: list[dict]
+    revision_history: list[dict]
+    user_constraints: dict
+    excluded_paper_ids: list[str]
+    included_query_angles: list[str]
+    last_conversation_action: str
 ```
 
 设计规则：

@@ -15,14 +15,19 @@ const paperList = document.querySelector("#paper-list");
 const evidenceList = document.querySelector("#evidence-list");
 const paperCount = document.querySelector("#paper-count");
 const evidenceCount = document.querySelector("#evidence-count");
-const reportPreview = document.querySelector("#report-preview");
+const downloadStatus = document.querySelector("#download-status");
 const refreshRuns = document.querySelector("#refresh-runs");
 const downloadActions = document.querySelector(".download-actions");
+const chatMessages = document.querySelector("#chat-messages");
+const chatForm = document.querySelector("#chat-form");
+const chatInput = document.querySelector("#chat-input");
+const chatSend = document.querySelector("#chat-send");
+const chatStatus = document.querySelector("#chat-status");
+const quickActions = document.querySelector(".quick-actions");
 
 let activeRun = null;
 let selectedStepId = "understand_topic";
 let pollTimer = null;
-let activeReportKey = "report_markdown";
 
 function apiPath(path) {
   return new URL(path, window.location.href).toString();
@@ -54,11 +59,11 @@ function setStatus(element, status) {
 }
 
 function statusMark(status) {
-  if (status === "success") return "✓";
-  if (status === "running") return "●";
+  if (status === "success") return "OK";
+  if (status === "running") return "...";
   if (status === "failed" || status === "error") return "!";
-  if (status === "queued") return "…";
-  return "·";
+  if (status === "queued") return "..";
+  return "-";
 }
 
 function escapeText(value) {
@@ -82,9 +87,17 @@ function compactValue(value) {
   return String(value ?? "");
 }
 
+function selectedSources(run) {
+  return run?.request?.sources || [run?.request?.source || "offline"];
+}
+
 function getSelectedStep(run) {
   if (!run?.steps?.length) return null;
-  return run.steps.find((step) => step.id === selectedStepId) || run.steps.find((step) => step.status === "running") || run.steps[0];
+  return (
+    run.steps.find((step) => step.id === selectedStepId) ||
+    run.steps.find((step) => step.status === "running") ||
+    run.steps[0]
+  );
 }
 
 function renderRuns(runs = []) {
@@ -92,17 +105,25 @@ function renderRuns(runs = []) {
     runList.innerHTML = '<div class="empty-state">暂无运行</div>';
     return;
   }
+
   runList.innerHTML = runs
     .map((run) => {
       const active = activeRun?.id === run.id ? " active" : "";
+      const sources = selectedSources(run).join(" + ");
       return `
         <button class="run-item${active}" data-run-id="${escapeText(run.id)}" type="button">
           <strong>${escapeText(run.request.topic)}</strong>
-          <small>${escapeText(run.status)} · ${escapeText(shortId(run.id))}</small>
+          <small>${escapeText(run.status)} / ${escapeText(sources)} / ${escapeText(shortId(run.id))}</small>
         </button>
       `;
     })
     .join("");
+}
+
+function markActiveRun(runId) {
+  runList.querySelectorAll("[data-run-id]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.runId === runId);
+  });
 }
 
 function renderSteps(run) {
@@ -163,8 +184,9 @@ function renderQueryPlan(run) {
     .map(
       (query) => `
         <div class="query-row">
-          <strong>${escapeText(query.query_id)} · ${escapeText(query.source)}</strong>
+          <strong>${escapeText(query.query_id)} / ${escapeText(query.source)}</strong>
           <p>${escapeText(query.query_text)}</p>
+          <small>${escapeText(query.filters?.angle || "")} / ${escapeText(query.filters?.distance || "")}</small>
         </div>
       `,
     )
@@ -214,7 +236,7 @@ function renderEvidence(run) {
     .map(
       (item) => `
         <article class="evidence-row">
-          <h3>${escapeText(item.category)} · ${escapeText(item.evidence_id)}</h3>
+          <h3>${escapeText(item.category)} / ${escapeText(item.evidence_id)}</h3>
           <p>${escapeText(item.claim)}</p>
         </article>
       `,
@@ -222,22 +244,73 @@ function renderEvidence(run) {
     .join("");
 }
 
-function renderReport(run) {
-  const text = run?.snapshots?.[activeReportKey] || "";
-  const fallback = run?.error ? `Error: ${run.error}` : "暂无报告";
-  reportPreview.textContent = text || fallback;
+function updateDownloadButtons(run) {
+  const documents = run?.snapshots?.documents || {};
+  const readyCount = Object.values(documents).filter((document) => document?.ready).length;
+
+  downloadActions.querySelectorAll("[data-download]").forEach((button) => {
+    const document = documents[button.dataset.download];
+    button.disabled = !document?.ready;
+  });
+
+  if (!run) {
+    downloadStatus.textContent = "任务完成后可下载 Markdown 文件。";
+  } else if (run.error) {
+    downloadStatus.textContent = `Error: ${run.error}`;
+  } else if (readyCount) {
+    downloadStatus.textContent = `${readyCount} 个 Markdown 文件已生成，可直接下载；正文不再预览以保持切换流畅。`;
+  } else {
+    downloadStatus.textContent = "任务运行中，Markdown 文件生成后会启用下载按钮。";
+  }
+}
+
+function renderChat(run) {
+  const messages = run?.messages || run?.snapshots?.conversation_messages || [];
+  if (!messages.length) {
+    chatMessages.className = "chat-messages empty-state";
+    chatMessages.textContent = run?.status === "success" ? "可以继续提出调整要求。" : "任务完成后可以继续对话调整。";
+  } else {
+    chatMessages.className = "chat-messages";
+    chatMessages.innerHTML = messages
+      .map(
+        (message) => `
+          <article class="chat-message ${escapeText(message.role || "user")}">
+            <strong>${escapeText(message.role || "user")}${message.action ? ` / ${escapeText(message.action)}` : ""}</strong>
+            <p>${escapeText(message.content || "")}</p>
+          </article>
+        `,
+      )
+      .join("");
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  const ready = run?.status === "success" || run?.status === "failed";
+  chatInput.disabled = !ready;
+  chatSend.disabled = !ready;
+  quickActions.querySelectorAll("button").forEach((button) => {
+    button.disabled = !ready;
+  });
+  chatStatus.textContent = ready ? "会话已就绪，可以基于当前调研继续调整。" : "等待可继续的调研会话。";
 }
 
 function renderRun(run) {
   activeRun = run;
+  markActiveRun(run?.id);
   const status = run?.status || "idle";
   setStatus(statusChip, status);
   subtitle.textContent = run
-    ? `${run.request.topic} · ${(run.request.sources || [run.request.source]).join(" + ")} · ${run.request.llm} · ${shortId(run.id)}`
+    ? `${run.request.topic} / ${selectedSources(run).join(" + ")} / ${run.request.llm} / ${shortId(run.id)}`
     : "提交一个研究主题，查看可追踪的理解、检索、证据和报告生成流程。";
-  processCaption.textContent = run?.current_step ? `正在执行 ${run.current_step}` : status === "success" ? "任务完成" : "等待任务开始";
+  processCaption.textContent = run?.current_step
+    ? `正在执行 ${run.current_step}`
+    : status === "success"
+      ? "任务完成"
+      : "等待任务开始";
 
-  const elapsed = (run?.snapshots?.node_trace || []).reduce((sum, item) => sum + Number(item.elapsed_ms || 0), 0);
+  const elapsed = (run?.snapshots?.node_trace || []).reduce(
+    (sum, item) => sum + Number(item.elapsed_ms || 0),
+    0,
+  );
   traceRuntime.textContent = formatMs(elapsed) || "0 ms";
 
   if (run?.current_step) selectedStepId = run.current_step;
@@ -246,15 +319,8 @@ function renderRun(run) {
   renderQueryPlan(run);
   renderPapers(run);
   renderEvidence(run);
-  renderReport(run);
   updateDownloadButtons(run);
-}
-
-function updateDownloadButtons(run) {
-  const ready = run?.status === "success" || run?.status === "failed";
-  downloadActions.querySelectorAll("[data-download]").forEach((button) => {
-    button.disabled = !ready;
-  });
+  renderChat(run);
 }
 
 async function refreshRunList() {
@@ -265,7 +331,6 @@ async function refreshRunList() {
 async function loadRun(runId) {
   const run = await fetchJSON(`./api/runs/${encodeURIComponent(runId)}`);
   renderRun(run);
-  await refreshRunList();
   return run;
 }
 
@@ -273,11 +338,13 @@ function startPolling(runId) {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
     try {
-      const run = await loadRun(runId);
+      const run = await fetchJSON(`./api/runs/${encodeURIComponent(runId)}`);
+      renderRun(run);
       if (!["queued", "running"].includes(run.status)) {
         clearInterval(pollTimer);
         pollTimer = null;
         runButton.disabled = false;
+        await refreshRunList();
       }
     } catch (error) {
       console.error(error);
@@ -314,7 +381,7 @@ form.addEventListener("submit", async (event) => {
     startPolling(run.id);
   } catch (error) {
     runButton.disabled = false;
-    reportPreview.textContent = `Error: ${error.message}`;
+    downloadStatus.textContent = `Error: ${error.message}`;
   }
 });
 
@@ -322,7 +389,11 @@ runList.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-run-id]");
   if (!button) return;
   selectedStepId = "understand_topic";
-  await loadRun(button.dataset.runId);
+  try {
+    await loadRun(button.dataset.runId);
+  } catch (error) {
+    downloadStatus.textContent = `Error: ${error.message}`;
+  }
 });
 
 stepList.addEventListener("click", (event) => {
@@ -330,15 +401,6 @@ stepList.addEventListener("click", (event) => {
   if (!card || !activeRun) return;
   selectedStepId = card.dataset.stepId;
   renderRun(activeRun);
-});
-
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
-    tab.classList.add("active");
-    activeReportKey = tab.dataset.report;
-    renderReport(activeRun);
-  });
 });
 
 refreshRuns.addEventListener("click", refreshRunList);
@@ -351,7 +413,39 @@ downloadActions.addEventListener("click", (event) => {
 });
 
 updateDownloadButtons(null);
+renderChat(null);
+
+async function sendChatMessage(message) {
+  if (!activeRun || !message.trim()) return;
+  chatSend.disabled = true;
+  chatStatus.textContent = "Agent 正在处理调整...";
+  try {
+    const response = await fetchJSON(`./api/runs/${encodeURIComponent(activeRun.id)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+    chatInput.value = "";
+    renderRun(response.run);
+    await refreshRunList();
+    chatStatus.textContent = `已执行：${response.action}`;
+  } catch (error) {
+    chatStatus.textContent = `Error: ${error.message}`;
+  } finally {
+    chatSend.disabled = false;
+  }
+}
+
+chatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await sendChatMessage(chatInput.value);
+});
+
+quickActions.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-chat-prompt]");
+  if (!button || button.disabled) return;
+  await sendChatMessage(button.dataset.chatPrompt || "");
+});
 
 refreshRunList().catch((error) => {
-  reportPreview.textContent = `Error: ${error.message}`;
+  downloadStatus.textContent = `Error: ${error.message}`;
 });

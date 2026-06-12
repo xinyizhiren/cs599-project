@@ -510,6 +510,7 @@ def render_process_markdown(state: dict[str, Any]) -> str:
     temporal_profile = state.get("temporal_profile", {})
     corpus_profile = state.get("corpus_profile", {})
     topic_refinement = state.get("topic_refinement", {})
+    revision_history = state.get("revision_history", [])
 
     source_counts: dict[str, int] = defaultdict(int)
     for paper in searched_papers:
@@ -716,6 +717,32 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             f"| `{check.check_id}` | `{check.paper_id}` | {check.status} | "
             f"{_clip_table_text(check.message)} |"
         )
+
+    if revision_history:
+        lines.extend(
+            [
+                "",
+                "## Conversation Revisions",
+                "",
+                "| Time | Action | Updated | Message | Output Keys |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for revision in revision_history:
+            output_keys = ", ".join(str(item) for item in revision.get("output_keys", []))
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _clip_table_text(str(revision.get("timestamp", "")), 48),
+                        f"`{_clip_table_text(str(revision.get('action', '')), 48)}`",
+                        str(revision.get("updated", False)).lower(),
+                        _clip_table_text(str(revision.get("message", "")), 120),
+                        f"`{_clip_table_text(output_keys, 120)}`",
+                    ]
+                )
+                + " |"
+            )
 
     lines.extend(["", "## Agent Trace", "", "| Step | Node | Status | Output Keys |", "| ---: | --- | --- | --- |"])
     for index, step in enumerate(node_trace, start=1):
