@@ -5,7 +5,7 @@
   "average_score": 100.0,
   "results": [
     {
-      "task_id": "20260611153506-agentic-rag-for-enterprise-knowl",
+      "task_id": "20260614090827-agentic-rag-for-enterprise-knowl",
       "status": "success",
       "selected_papers": [
         {
@@ -22,7 +22,23 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 42,
-          "score": 17.32
+          "score": 21.32
+        },
+        {
+          "paper_id": "offline:multi-agent-collaboration-2024",
+          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
+          "authors": [
+            "S. Wang",
+            "A. Kumar"
+          ],
+          "year": 2024,
+          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
+          "url": "https://example.org/papers/multi-agent-collaboration-2024",
+          "doi": null,
+          "arxiv_id": null,
+          "source": "offline",
+          "citation_count": 58,
+          "score": 4.9
         },
         {
           "paper_id": "offline:llm-agents-software-engineering-2024",
@@ -38,7 +54,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 73,
-          "score": 3.05
+          "score": 4.05
         },
         {
           "paper_id": "offline:research-agent-evaluation-2025",
@@ -54,7 +70,7 @@
           "arxiv_id": null,
           "source": "offline",
           "citation_count": 24,
-          "score": 2.64
+          "score": 3.64
         },
         {
           "paper_id": "offline:citation-hallucination-2026",
@@ -71,22 +87,6 @@
           "source": "offline",
           "citation_count": 9,
           "score": 1.5699999999999998
-        },
-        {
-          "paper_id": "offline:multi-agent-collaboration-2024",
-          "title": "Multi-Agent Collaboration Patterns for Large Language Model Systems",
-          "authors": [
-            "S. Wang",
-            "A. Kumar"
-          ],
-          "year": 2024,
-          "abstract": "The paper compares supervisor, planner-worker, debate, and reflection patterns for multi-agent LLM systems and studies their reliability in long-running tasks.",
-          "url": "https://example.org/papers/multi-agent-collaboration-2024",
-          "doi": null,
-          "arxiv_id": null,
-          "source": "offline",
-          "citation_count": 58,
-          "score": 0.8999999999999999
         }
       ],
       "report_path": "examples\\reports\\agentic-rag-for-enterprise-knowledge-management.md",
@@ -141,7 +141,7 @@
       "topic": "Agentic RAG for enterprise knowledge management"
     },
     {
-      "task_id": "20260611153506-multi-agent-collaboration-in-llm",
+      "task_id": "20260614090827-multi-agent-collaboration-in-llm",
       "status": "success",
       "selected_papers": [
         {
@@ -277,7 +277,7 @@
       "topic": "Multi-agent collaboration in LLM systems"
     },
     {
-      "task_id": "20260611153506-llm-agents-for-software-engineer",
+      "task_id": "20260614090827-llm-agents-for-software-engineer",
       "status": "success",
       "selected_papers": [
         {
@@ -413,7 +413,7 @@
       "topic": "LLM agents for software engineering"
     },
     {
-      "task_id": "20260611153506-citation-hallucination-detection",
+      "task_id": "20260614090827-citation-hallucination-detection",
       "status": "success",
       "selected_papers": [
         {
@@ -549,7 +549,7 @@
       "topic": "Citation hallucination detection in scientific writing"
     },
     {
-      "task_id": "20260611153506-long-term-memory-mechanisms-for",
+      "task_id": "20260614090827-long-term-memory-mechanisms-for",
       "status": "success",
       "selected_papers": [
         {

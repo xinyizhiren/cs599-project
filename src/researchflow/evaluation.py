@@ -10,14 +10,14 @@ from .state import ResearchState
 
 
 EXPECTED_REPORT_SECTIONS = [
-    "## 1. Research Background",
-    "## 2. Core Papers",
-    "## 3. Key Claims and Evidence",
-    "## 4. Method Taxonomy",
-    "## 5. Comparative Analysis",
-    "## 6. Research Gaps",
-    "## 7. Limitations of This Automated Review",
-    "## References",
+    "## 1. 研究背景",
+    "## 2. 核心文献",
+    "## 3. 关键结论与证据",
+    "## 4. 方法与主题分类",
+    "## 5. 对比分析",
+    "## 6. 研究空白",
+    "## 7. 自动化调研局限",
+    "## 参考文献",
 ]
 
 
@@ -109,8 +109,18 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     )
 
     completeness = section_completeness(report)
-    method_taxonomy_quality = 1.0 if "### Contribution" in report and "### Limitation" in report else 0.5
-    research_gap_usefulness = 1.0 if "Research Gaps" in report and "Evidence:" in report else 0.5
+    method_taxonomy_quality = (
+        1.0
+        if ("### 贡献" in report or "### Contribution" in report)
+        and ("### 局限" in report or "### Limitation" in report)
+        else 0.5
+    )
+    research_gap_usefulness = (
+        1.0
+        if ("## 6. 研究空白" in report or "Research Gaps" in report)
+        and ("证据：" in report or "Evidence:" in report)
+        else 0.5
+    )
     readability = 1.0 if len(report.split()) >= 120 else 0.6
     report_score = 20 * (
         (completeness * 0.4)

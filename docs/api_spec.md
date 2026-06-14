@@ -302,17 +302,21 @@ def write_report(
 输出 Markdown 结构：
 
 ```markdown
-# Literature Review: {topic}
+# 文献调研报告：{topic}
 
-## 1. Research Background
-## 2. Core Papers
-## 3. Key Claims and Evidence
-## 4. Method Taxonomy
-## 5. Comparative Analysis
-## 6. Research Gaps
-## 7. Limitations of This Automated Review
-## Citation Checks
-## References
+## 执行摘要
+## 检索方法与范围
+## 1. 研究背景
+## 2. 核心文献
+## 3. 关键结论与证据
+## RAG 研究透镜
+## 4. 方法与主题分类
+## 证据台账
+## 5. 对比分析
+## 6. 研究空白
+## 7. 自动化调研局限
+## 引用校验
+## 参考文献
 ```
 
 ## 6. 数据 Schema

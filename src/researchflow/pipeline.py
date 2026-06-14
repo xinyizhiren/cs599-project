@@ -42,6 +42,12 @@ RAG_TITLE_SIGNALS = (
     "review",
     "benchmark",
     "evaluation",
+    "framework",
+    "agentic",
+    "multi-hop",
+    "multi-agent",
+    "autonomous",
+    "faithful",
     "security",
     "secure",
     "threat",
@@ -51,6 +57,8 @@ RAG_TITLE_SIGNALS = (
     "causalrag",
     "trustworthy",
     "robust",
+    "federated",
+    "dynamic",
 )
 RAG_SYSTEM_SIGNALS = (
     "retriever",
@@ -79,6 +87,14 @@ RAG_DOMAIN_APP_SIGNALS = (
     "urban studies",
     "traditional chinese",
     "corporate",
+    "quranic",
+    "religious",
+    "legal",
+    "law",
+    "medical",
+    "healthcare",
+    "finance",
+    "financial",
 )
 RAG_CORE_METHOD_SIGNALS = (
     "survey",
@@ -91,6 +107,13 @@ RAG_CORE_METHOD_SIGNALS = (
     "framework",
     "system",
     "agentic",
+    "autonomous",
+    "multi-hop",
+    "multi-agent",
+    "iterative",
+    "temporal",
+    "federated",
+    "dynamic",
     "graph",
     "faithful",
     "adaptive",
@@ -197,6 +220,7 @@ def score_paper(paper: PaperRecord, terms: list[str], topic: str = "") -> float:
         elif re.search(r"\brag\b", abstract):
             score += 2.0
         score += sum(2.0 for signal in RAG_TITLE_SIGNALS if signal in title)
+        score += min(5.0, sum(1.0 for signal in RAG_CORE_METHOD_SIGNALS if signal in title))
         score += min(4.0, sum(0.5 for signal in RAG_SYSTEM_SIGNALS if signal in combined))
         has_core_method_signal = any(signal in title for signal in RAG_CORE_METHOD_SIGNALS)
         has_domain_drift = any(signal in title for signal in RAG_DOMAIN_APP_SIGNALS)
@@ -678,10 +702,11 @@ def refine_topic_with_llm(topic: str, provider: str) -> dict[str, Any]:
         "You help a literature-review agent clarify vague research topics before search. "
         "Return only a JSON object with keys refined_topic, research_questions, "
         "adjacent_topics, query_hints, and scope_notes. refined_topic must be a concise "
-        "English academic search topic. research_questions should be 3-5 questions. "
-        "adjacent_topics should contain 2-3 related but not identical angles worth checking. "
-        "query_hints should contain 3-5 search queries. Do not include citations, URLs, "
-        "paper titles, or hidden reasoning."
+        "English academic search topic for search recall. research_questions should be "
+        "3-5 Chinese questions for the final report. adjacent_topics should contain 2-3 "
+        "Chinese related but not identical angles worth checking. scope_notes must be "
+        "Chinese. query_hints should contain 3-5 English search queries. Do not include "
+        "citations, URLs, paper titles, or hidden reasoning."
     )
     payload = client.generate_json(
         system_prompt,
@@ -807,9 +832,9 @@ def polish_background_with_llm(
 ) -> str:
     client = build_llm_client(provider)
     system_prompt = (
-        "You polish only the Research Background paragraph for a literature review report. "
-        "Return a JSON object with key research_background. Do not add citations, URLs, "
-        "paper IDs, evidence IDs, or references. Keep it concise and factual."
+        "You polish only the Chinese research background paragraph for a literature review report. "
+        "Return a JSON object with key research_background. Write in Chinese. Do not add citations, "
+        "URLs, paper IDs, evidence IDs, or references. Keep it concise and factual."
     )
     payload = client.generate_json(
         system_prompt,
@@ -827,8 +852,8 @@ def polish_background_with_llm(
     if "http" in paragraph or "[P" in paragraph or "evidence_id" in paragraph:
         raise LLMError("LLM background attempted to add citations or evidence IDs.")
 
-    start_marker = "## 1. Research Background\n\n"
-    end_marker = "\n\n## 2. Core Papers"
+    start_marker = "## 1. 研究背景\n\n"
+    end_marker = "\n\n## 2. 核心文献"
     start = report_markdown.find(start_marker)
     end = report_markdown.find(end_marker)
     if start == -1 or end == -1 or end <= start:

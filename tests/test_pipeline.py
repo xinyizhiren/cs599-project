@@ -26,9 +26,9 @@ def test_run_research_offline_generates_report() -> None:
     assert len(result.selected_papers) == 3
     assert output.exists()
     report = output.read_text(encoding="utf-8")
-    assert "Literature Review" in report
-    assert "References" in report
-    assert "Key Claims and Evidence" in report
+    assert "文献调研报告" in report
+    assert "参考文献" in report
+    assert "关键结论与证据" in report
     assert result.metrics["evidence_count"] == 6
     assert result.metrics["overall_score"] > 80
     assert result.metrics["claim_evidence_coverage"] == 1.0
@@ -123,8 +123,8 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
     assert result.metrics["actual_source"] == "hybrid"
     assert any(paper.source == "crossref" for paper in result.selected_papers)
     report = output.read_text(encoding="utf-8")
-    assert "Executive Summary" in report
-    assert "Evidence Ledger" in report
+    assert "执行摘要" in report
+    assert "证据台账" in report
 
 
 def test_balanced_merge_papers_prevents_source_starvation() -> None:
@@ -169,6 +169,18 @@ def test_rag_ranking_and_lens_prioritize_core_literature() -> None:
         url="https://arxiv.org/abs/app",
         source="arxiv",
     )
+    domain_study = PaperRecord(
+        paper_id="arxiv:domain",
+        title="Investigating Retrieval-Augmented Generation in Quranic Studies",
+        authors=["D. Author"],
+        year=2026,
+        abstract=(
+            "This work evaluates open-source large language models for a domain-specific "
+            "retrieval-augmented generation application."
+        ),
+        url="https://arxiv.org/abs/domain",
+        source="arxiv",
+    )
     survey = PaperRecord(
         paper_id="arxiv:survey",
         title="A Technical Survey of Retrieval-Augmented Generation Benchmarks and Security",
@@ -182,10 +194,11 @@ def test_rag_ranking_and_lens_prioritize_core_literature() -> None:
         source="arxiv",
     )
 
-    ranked = rank_papers([application, survey], topic, top_k=2)
+    ranked = rank_papers([application, domain_study, survey], topic, top_k=3)
     lens = build_research_lens(topic, ranked)
 
     assert ranked[0].paper_id == "arxiv:survey"
+    assert ranked.index(next(paper for paper in ranked if paper.paper_id == "arxiv:domain")) > 0
     assert lens["lens_name"] == "RAG Research Lens"
     assert lens["coverage"] > 0.5
 

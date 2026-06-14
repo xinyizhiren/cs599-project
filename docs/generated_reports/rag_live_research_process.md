@@ -4,10 +4,15 @@ This file records observable Agent actions and artifacts. It is not a hidden cha
 
 ## Run Summary
 
-- Task ID: `20260611062103-retrieval-augmented-generation-f`
+- Task ID: `20260614090646-retrieval-augmented-generation-f`
+- Original topic: `retrieval augmented generation for large language models`
+- Effective search topic: `Retrieval-Augmented Generation (RAG) for Large Language Models: Advances, Challenges, and Architectures`
+- Topic refinement enabled: `true`
+- Topic refinement used: `true`
+- Topic refinement fallback: None
 - Requested source: `arxiv`
 - Actual source: `arxiv`
-- Candidate limit: `120`
+- Candidate limit: `96`
 - Candidate multiplier: `8`
 - From year: `2020`
 - Fallback reason: None
@@ -16,18 +21,30 @@ This file records observable Agent actions and artifacts. It is not a hidden cha
 - Graph runtime: `sequential`
 - LLM provider: `deepseek`
 - LLM used: `true`
-- LLM chunk count: `4`
+- LLM chunk count: `3`
 - LLM fallback reason: None
+
+## Topic Understanding
+
+- Refined topic: `Retrieval-Augmented Generation (RAG) for Large Language Models: Advances, Challenges, and Architectures`
+- Scope notes: 重点检索近3年（2022-2025）的综述、顶级会议论文（ACL、EMNLP、NeurIPS等）及权威预印本。关注通用RAG方法，不过度深入特定领域知识图谱的构建细节。
+- Research questions: 检索增强生成（RAG）的主要架构有哪些？如何分类？; 检索质量对生成结果准确性和相关性的影响机制是什么？; RAG中如何融合外部知识以解决大语言模型的知识更新与幻觉问题？; 不同检索策略（稀疏检索、稠密检索、混合检索）在RAG中的应用效果如何？; RAG在特定领域（如医疗、法律）的应用现状与挑战是什么？
+- Adjacent topics: 知识图谱增强生成; 基于检索的序列生成; 密集检索在语言模型中的应用
 
 ## Query Plan
 
 | Query ID | Search Query | Source Intent | Filters |
 | --- | --- | --- | --- |
-| `q1` | retrieval augmented generation for large language models | arxiv | `{'from_year': 2020}` |
-| `q2` | retrieval augmented generation large language models survey | arxiv | `{'from_year': 2020}` |
-| `q3` | retrieval augmented generation large language models methods | arxiv | `{'from_year': 2020}` |
-| `q4` | retrieval augmented generation large language models evaluation benchmark | arxiv | `{'from_year': 2020}` |
-| `q5` | retrieval augmented generation large language models challenges limitations | arxiv | `{'from_year': 2020}` |
+| `q1` | Retrieval-Augmented Generation (RAG) for Large Language Models: Advances, Challenges, and Architectures | arxiv | `{'from_year': 2020, 'angle': 'core', 'distance': 'direct'}` |
+| `q2` | retrieval-augmented generation rag large language models survey taxonomy | arxiv | `{'from_year': 2020, 'angle': 'survey_taxonomy', 'distance': 'direct'}` |
+| `q3` | retrieval-augmented generation rag large language models methods systems architecture | arxiv | `{'from_year': 2020, 'angle': 'methods_systems', 'distance': 'direct'}` |
+| `q4` | retrieval-augmented generation rag large language models evaluation benchmark dataset | arxiv | `{'from_year': 2020, 'angle': 'evaluation_benchmark', 'distance': 'direct'}` |
+| `q5` | retrieval-augmented generation rag large language models challenges limitations open problems | arxiv | `{'from_year': 2020, 'angle': 'limitations_challenges', 'distance': 'direct'}` |
+| `q6` | retrieval-augmented generation rag large language models applications case studies | arxiv | `{'from_year': 2020, 'angle': 'applications_domains', 'distance': 'adjacent'}` |
+| `q7` | retrieval-augmented generation rag large language models security robustness hallucination | arxiv | `{'from_year': 2020, 'angle': 'security_robustness', 'distance': 'adjacent'}` |
+| `q8` | retrieval augmented generation survey | arxiv | `{'from_year': 2020, 'angle': 'llm_hint', 'distance': 'adjacent'}` |
+| `q9` | RAG architectures large language models | arxiv | `{'from_year': 2020, 'angle': 'llm_hint', 'distance': 'adjacent'}` |
+| `q10` | retrieval augmented generation challenges | arxiv | `{'from_year': 2020, 'angle': 'llm_hint', 'distance': 'adjacent'}` |
 
 ## Search Results
 
@@ -59,21 +76,18 @@ Ranking uses title-weighted topic matching, RAG phrase/acronym signals, survey/b
 
 | Rank | Paper ID | Title | Year | Source | Score | URL |
 | ---: | --- | --- | ---: | --- | ---: | --- |
-| 1 | `arxiv:2411.19443v1` | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 2024 | arxiv | 39.320 | http://arxiv.org/abs/2411.19443v1 |
-| 2 | `arxiv:2503.16581v1` | Investigating Retrieval-Augmented Generation in Quranic Studies: A Study of 13 Open-Source Large Language Models | 2025 | arxiv | 35.900 | http://arxiv.org/abs/2503.16581v1 |
-| 3 | `arxiv:2401.15391v1` | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries | 2024 | arxiv | 33.320 | http://arxiv.org/abs/2401.15391v1 |
-| 4 | `arxiv:2501.09136v4` | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 2025 | arxiv | 32.900 | http://arxiv.org/abs/2501.09136v4 |
-| 5 | `arxiv:2602.08545v1` | DA-RAG: Dynamic Attributed Community Search for Retrieval-Augmented Generation | 2026 | arxiv | 32.480 | http://arxiv.org/abs/2602.08545v1 |
-| 6 | `arxiv:2603.26668v2` | Bridge-RAG: An Abstract Bridge Tree Based Retrieval Augmented Generation Algorithm | 2026 | arxiv | 30.980 | http://arxiv.org/abs/2603.26668v2 |
-| 7 | `arxiv:2510.22344v1` | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation | 2025 | arxiv | 30.900 | http://arxiv.org/abs/2510.22344v1 |
-| 8 | `arxiv:2501.03995v1` | RAG-Check: Evaluating Multimodal Retrieval Augmented Generation Performance | 2025 | arxiv | 30.900 | http://arxiv.org/abs/2501.03995v1 |
-| 9 | `arxiv:2604.18509v2` | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation | 2026 | arxiv | 30.480 | http://arxiv.org/abs/2604.18509v2 |
-| 10 | `arxiv:2605.24366v1` | Structure-Aware RAG: Structured Retrieval Augmented Generation from Noisy Data for Conversational Agents | 2026 | arxiv | 30.480 | http://arxiv.org/abs/2605.24366v1 |
-| 11 | `arxiv:2605.27432v1` | FD-RAG: Federated Dual-System Retrieval-Augmented Generation | 2026 | arxiv | 30.480 | http://arxiv.org/abs/2605.27432v1 |
-| 12 | `arxiv:2603.08329v1` | SPD-RAG: Sub-Agent Per Document Retrieval-Augmented Generation | 2026 | arxiv | 30.480 | http://arxiv.org/abs/2603.08329v1 |
-| 13 | `arxiv:2502.01113v3` | GFM-RAG: Graph Foundation Model for Retrieval Augmented Generation | 2025 | arxiv | 30.400 | http://arxiv.org/abs/2502.01113v3 |
-| 14 | `arxiv:2507.13396v1` | DyG-RAG: Dynamic Graph Retrieval-Augmented Generation with Event-Centric Reasoning | 2025 | arxiv | 30.400 | http://arxiv.org/abs/2507.13396v1 |
-| 15 | `arxiv:2508.05650v1` | OmniBench-RAG: A Multi-Domain Evaluation Platform for Retrieval-Augmented Generation Tools | 2025 | arxiv | 30.400 | http://arxiv.org/abs/2508.05650v1 |
+| 1 | `arxiv:2411.19443v1` | Auto-RAG: Autonomous Retrieval-Augmented Generation for Large Language Models | 2024 | arxiv | 42.320 | http://arxiv.org/abs/2411.19443v1 |
+| 2 | `arxiv:2501.09136v4` | Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG | 2025 | arxiv | 38.900 | http://arxiv.org/abs/2501.09136v4 |
+| 3 | `arxiv:2401.15391v1` | MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries | 2024 | arxiv | 37.320 | http://arxiv.org/abs/2401.15391v1 |
+| 4 | `arxiv:2510.22344v1` | FAIR-RAG: Faithful Adaptive Iterative Refinement for Retrieval-Augmented Generation | 2025 | arxiv | 35.900 | http://arxiv.org/abs/2510.22344v1 |
+| 5 | `arxiv:2601.05264v1` | Engineering the RAG Stack: A Comprehensive Review of the Architecture and Trust Frameworks for Retrieval-Augmented Ge... | 2025 | arxiv | 35.900 | http://arxiv.org/abs/2601.05264v1 |
+| 6 | `arxiv:2602.08545v1` | DA-RAG: Dynamic Attributed Community Search for Retrieval-Augmented Generation | 2026 | arxiv | 35.480 | http://arxiv.org/abs/2602.08545v1 |
+| 7 | `arxiv:2605.27432v1` | FD-RAG: Federated Dual-System Retrieval-Augmented Generation | 2026 | arxiv | 34.480 | http://arxiv.org/abs/2605.27432v1 |
+| 8 | `arxiv:2507.13396v1` | DyG-RAG: Dynamic Graph Retrieval-Augmented Generation with Event-Centric Reasoning | 2025 | arxiv | 34.400 | http://arxiv.org/abs/2507.13396v1 |
+| 9 | `arxiv:2504.12560v1` | CDF-RAG: Causal Dynamic Feedback for Adaptive Retrieval-Augmented Generation | 2025 | arxiv | 33.900 | http://arxiv.org/abs/2504.12560v1 |
+| 10 | `arxiv:2604.18509v2` | MASS-RAG: Multi-Agent Synthesis Retrieval-Augmented Generation | 2026 | arxiv | 33.480 | http://arxiv.org/abs/2604.18509v2 |
+| 11 | `arxiv:2501.00332v1` | MAIN-RAG: Multi-Agent Filtering Retrieval-Augmented Generation | 2024 | arxiv | 32.820 | http://arxiv.org/abs/2501.00332v1 |
+| 12 | `arxiv:2510.25518v1` | Retrieval Augmented Generation (RAG) for Fintech: Agentic Design and Evaluation | 2025 | arxiv | 31.900 | http://arxiv.org/abs/2510.25518v1 |
 
 ## Research Lens
 
@@ -85,120 +99,90 @@ A domain-aware lens that checks whether selected RAG papers cover survey, retrie
 
 | Dimension | Paper Count |
 | --- | ---: |
-| Domain Applications | 5 |
-| Evaluation & Benchmarks | 15 |
-| Generation & Grounding | 15 |
-| Graph & Structured RAG | 8 |
-| Retrieval & Indexing | 15 |
-| Security & Robustness | 2 |
+| Domain Applications | 3 |
+| Evaluation & Benchmarks | 11 |
+| Generation & Grounding | 12 |
+| Graph & Structured RAG | 6 |
+| Retrieval & Indexing | 12 |
+| Security & Robustness | 4 |
 | Survey & Taxonomy | 4 |
 
 | Paper ID | Lens Dimensions |
 | --- | --- |
 | `arxiv:2411.19443v1` | Survey & Taxonomy, Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
-| `arxiv:2503.16581v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Domain Applications |
-| `arxiv:2401.15391v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
 | `arxiv:2501.09136v4` | Survey & Taxonomy, Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Domain Applications |
-| `arxiv:2602.08545v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG |
-| `arxiv:2603.26668v2` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Security & Robustness, Graph & Structured RAG |
+| `arxiv:2401.15391v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
 | `arxiv:2510.22344v1` | Survey & Taxonomy, Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Security & Robustness, Graph & Structured RAG |
-| `arxiv:2501.03995v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
-| `arxiv:2604.18509v2` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
-| `arxiv:2605.24366v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG, Domain Applications |
+| `arxiv:2601.05264v1` | Survey & Taxonomy, Retrieval & Indexing, Generation & Grounding, Security & Robustness, Domain Applications |
+| `arxiv:2602.08545v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG |
 | `arxiv:2605.27432v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG |
-| `arxiv:2603.08329v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
-| `arxiv:2502.01113v3` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG, Domain Applications |
 | `arxiv:2507.13396v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG |
-| `arxiv:2508.05650v1` | Survey & Taxonomy, Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG, Domain Applications |
+| `arxiv:2504.12560v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Graph & Structured RAG |
+| `arxiv:2604.18509v2` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks |
+| `arxiv:2501.00332v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Security & Robustness |
+| `arxiv:2510.25518v1` | Retrieval & Indexing, Generation & Grounding, Evaluation & Benchmarks, Security & Robustness, Graph & Structured RAG, Domain Applications |
 
 ## Evidence Extraction
 
 | Evidence ID | Paper ID | Category | Confidence | Claim |
 | --- | --- | --- | ---: | --- |
-| `llm-arxiv-2411-19443v1-1` | `arxiv:2411.19443v1` | contribution | 0.65 | Auto-RAG is an autonomous iterative retrieval model that leverages LLM's decision-making to iteratively interact with the retriever. |
-| `llm-arxiv-2411-19443v1-2` | `arxiv:2411.19443v1` | experiment | 0.65 | Auto-RAG outperforms existing methods across six benchmarks. |
-| `llm-arxiv-2503-16581v1-1` | `arxiv:2503.16581v1` | contribution | 0.65 | Investigates 13 open-source LLMs with RAG for Quranic studies. |
-| `llm-arxiv-2503-16581v1-2` | `arxiv:2503.16581v1` | experiment | 0.65 | Large models consistently outperform smaller models in capturing query semantics. |
-| `llm-arxiv-2503-16581v1-3` | `arxiv:2503.16581v1` | limitation | 0.65 | General-purpose LLMs often struggle with hallucinations in religious contexts. |
-| `llm-arxiv-2401-15391v1-1` | `arxiv:2401.15391v1` | contribution | 0.65 | Develops MultiHop-RAG, a benchmark dataset for multi-hop queries in RAG. |
-| `llm-arxiv-2401-15391v1-2` | `arxiv:2401.15391v1` | experiment | 0.65 | Existing RAG methods perform unsatisfactorily in retrieving and answering multi-hop queries. |
-| `llm-arxiv-2401-15391v1-3` | `arxiv:2401.15391v1` | future_work | 0.65 | MultiHop-RAG will be a valuable resource for developing effective RAG systems. |
-| `llm-arxiv-2501-09136v4-1` | `arxiv:2501.09136v4` | contribution | 0.65 | Provides a comprehensive survey and taxonomy of Agentic RAG systems. |
-| `llm-arxiv-2501-09136v4-2` | `arxiv:2501.09136v4` | future_work | 0.65 | Identifies key open research challenges including evaluation, coordination, memory management, efficiency, and governance. |
-| `llm-arxiv-2602-08545v1-1` | `arxiv:2602.08545v1` | method | 0.65 | DA-RAG uses attributed community search to dynamically extract relevant subgraphs based on the query. |
-| `llm-arxiv-2602-08545v1-2` | `arxiv:2602.08545v1` | method | 0.65 | DA-RAG captures high-order graph structures for self-complementary knowledge retrieval. |
-| `llm-arxiv-2602-08545v1-3` | `arxiv:2602.08545v1` | experiment | 0.65 | DA-RAG outperforms existing RAG methods by up to 40% in head-to-head comparisons. |
-| `llm-arxiv-2602-08545v1-4` | `arxiv:2602.08545v1` | experiment | 0.65 | DA-RAG reduces index construction time and token overhead by up to 37% and 41%. |
-| `llm-arxiv-2602-08545v1-5` | `arxiv:2602.08545v1` | limitation | 0.65 | Current G-RAG methodologies underutilize graph topology, focusing on low-order structures or pre-computed static communities. |
-| `llm-arxiv-2603-26668v2-1` | `arxiv:2603.26668v2` | contribution | 0.65 | Bridge-RAG introduces abstract to bridge query entities and document chunks. |
-| `llm-arxiv-2603-26668v2-2` | `arxiv:2603.26668v2` | method | 0.65 | Bridge-RAG uses a multi-level retrieval strategy with abstracts organized in a tree structure. |
-| `llm-arxiv-2603-26668v2-3` | `arxiv:2603.26668v2` | method | 0.65 | Bridge-RAG integrates Cuckoo Filter for O(1) entity lookup. |
-| `llm-arxiv-2603-26668v2-4` | `arxiv:2603.26668v2` | experiment | 0.65 | Bridge-RAG achieves consistent accuracy improvements and up to 1.9x faster retrieval. |
-| `llm-arxiv-2510-22344v1-1` | `arxiv:2510.22344v1` | contribution | 0.65 | FAIR-RAG transforms the standard RAG pipeline into a dynamic, evidence-driven reasoning process. |
-| `llm-arxiv-2510-22344v1-2` | `arxiv:2510.22344v1` | method | 0.65 | FAIR-RAG uses Structured Evidence Assessment (SEA) to identify explicit informational gaps. |
-| `llm-arxiv-2510-22344v1-3` | `arxiv:2510.22344v1` | experiment | 0.65 | FAIR-RAG outperforms strong baselines on multi-hop QA benchmarks, achieving F1 of 0.453 on HotpotQA. |
-| `llm-arxiv-2510-22344v1-4` | `arxiv:2510.22344v1` | limitation | 0.65 | Current advanced RAG methods lack a robust mechanism to identify and fill evidence gaps. |
-| `llm-arxiv-2501-03995v1-1` | `arxiv:2501.03995v1` | contribution | 0.65 | RAG-Check is a framework to evaluate the reliability of multi-modal RAG using relevancy and correctness scores. |
-| `llm-arxiv-2501-03995v1-2` | `arxiv:2501.03995v1` | experiment | 0.65 | RS and CS models achieve ~88% accuracy on test data. |
-| `llm-arxiv-2501-03995v1-3` | `arxiv:2501.03995v1` | experiment | 0.65 | RS model aligns with human preferences 20% more often than CLIP in retrieval. |
-| `llm-arxiv-2501-03995v1-4` | `arxiv:2501.03995v1` | limitation | 0.65 | Multi-modal RAG can introduce new hallucination sources from retrieval and VLM processing. |
-| `llm-arxiv-2604-18509v2-1` | `arxiv:2604.18509v2` | contribution | 0.65 | MASS-RAG is a multi-agent synthesis approach that structures evidence processing into specialized agents. |
-| `llm-arxiv-2604-18509v2-2` | `arxiv:2604.18509v2` | method | 0.65 | MASS-RAG uses distinct agents for summarization, extraction, and reasoning. |
-| `llm-arxiv-2604-18509v2-3` | `arxiv:2604.18509v2` | method | 0.65 | MASS-RAG exposes multiple intermediate evidence views. |
-| `llm-arxiv-2604-18509v2-4` | `arxiv:2604.18509v2` | experiment | 0.65 | MASS-RAG consistently improves performance over strong RAG baselines. |
-| `llm-arxiv-2604-18509v2-5` | `arxiv:2604.18509v2` | limitation | 0.65 | Single generation process struggles to reconcile evidence when contexts are noisy or heterogeneous. |
-| `llm-arxiv-2605-24366v1-1` | `arxiv:2605.24366v1` | contribution | 0.65 | SA-RAG uses tables as an intermediate structured representation to reduce noise while preserving essential information. |
-| `llm-arxiv-2605-24366v1-2` | `arxiv:2605.24366v1` | method | 0.65 | A quality-aware table metadata generation framework models metadata normalization and effectiveness. |
-| `llm-arxiv-2605-24366v1-3` | `arxiv:2605.24366v1` | experiment | 0.65 | SA-RAG significantly outperforms existing RAG baselines on two noisy real-world datasets. |
-| `llm-arxiv-2605-27432v1-1` | `arxiv:2605.27432v1` | contribution | 0.65 | FD-RAG is a federated dual-system RAG framework that decouples memory access from LLM reasoning. |
-| `llm-arxiv-2605-27432v1-2` | `arxiv:2605.27432v1` | method | 0.65 | FD-RAG learns semantic-aware adaptive hypergraphs and distills them into compact QA memories. |
-| `llm-arxiv-2605-27432v1-3` | `arxiv:2605.27432v1` | experiment | 0.65 | FD-RAG improves accuracy by up to 7.8% and reduces latency by 8.4x on QA benchmarks. |
-| `llm-arxiv-2603-08329v1-1` | `arxiv:2603.08329v1` | contribution | 0.65 | SPD-RAG is a hierarchical multi-agent framework for exhaustive cross-document QA. |
-| `llm-arxiv-2603-08329v1-2` | `arxiv:2603.08329v1` | method | 0.65 | Each document is processed by a dedicated agent, with a coordinator dispatching and aggregating partial answers. |
-| `llm-arxiv-2603-08329v1-3` | `arxiv:2603.08329v1` | experiment | 0.65 | SPD-RAG achieves an Avg Score of 58.1 on the LOONG benchmark, outperforming Normal RAG and Agentic RAG, with lower cost. |
-| `llm-arxiv-2502-01113v3-1` | `arxiv:2502.01113v3` | contribution | 0.65 | GFM-RAG is the first graph foundation model for RAG applicable to unseen datasets without fine-tuning. |
-| `llm-arxiv-2502-01113v3-2` | `arxiv:2502.01113v3` | method | 0.65 | GFM-RAG uses a graph neural network to reason over graph structure and captures complex query-knowledge relationships. |
-| `llm-arxiv-2502-01113v3-3` | `arxiv:2502.01113v3` | experiment | 0.65 | GFM-RAG achieves state-of-the-art performance on multi-hop QA and domain-specific RAG datasets. |
-| `llm-arxiv-2507-13396v1-1` | `arxiv:2507.13396v1` | contribution | 0.65 | DyG-RAG is an event-centric dynamic graph RAG framework for temporal reasoning. |
-| `llm-arxiv-2507-13396v1-2` | `arxiv:2507.13396v1` | method | 0.65 | DyG-RAG proposes Dynamic Event Units (DEUs) that encode both semantic content and temporal anchors. |
-| `llm-arxiv-2507-13396v1-3` | `arxiv:2507.13396v1` | experiment | 0.65 | DyG-RAG significantly improves accuracy and recall on temporal QA benchmarks. |
-| `llm-arxiv-2508-05650v1-1` | `arxiv:2508.05650v1` | contribution | 0.65 | The platform quantifies performance gains across accuracy and efficiency dimensions, spanning nine knowledge fields including culture, geography, and health. |
-| `llm-arxiv-2508-05650v1-2` | `arxiv:2508.05650v1` | method | 0.65 | Introduction of two standardized metrics: Improvements (accuracy gains) and Transformation (efficiency differences between pre RAG and post RAG models). |
-| `llm-arxiv-2508-05650v1-3` | `arxiv:2508.05650v1` | experiment | 0.65 | Evaluation reveals striking variability in RAG effectiveness, from significant gains in culture to declines in mathematics. |
-| `llm-arxiv-2508-05650v1-4` | `arxiv:2508.05650v1` | limitation | 0.65 | Existing methods lack domain coverage, employ coarse metrics, and fail to capture computational trade offs. |
+| `llm-arxiv-2411-19443v1-1` | `arxiv:2411.19443v1` | contribution | 0.65 | Auto-RAG achieves outstanding performance across six benchmarks. |
+| `llm-arxiv-2411-19443v1-2` | `arxiv:2411.19443v1` | method | 0.65 | Auto-RAG engages in multi-turn dialogues with the retriever, systematically planning retrievals and refining queries. |
+| `llm-arxiv-2501-09136v4-1` | `arxiv:2501.09136v4` | contribution | 0.65 | This paper presents an analytical survey of Agentic RAG systems and introduces a principled taxonomy. |
+| `llm-arxiv-2501-09136v4-2` | `arxiv:2501.09136v4` | future_work | 0.65 | Key open research challenges include evaluation, coordination, memory management, efficiency, and governance. |
+| `llm-arxiv-2401-15391v1-1` | `arxiv:2401.15391v1` | contribution | 0.65 | The paper develops a novel dataset, MultiHop-RAG, consisting of a knowledge base, multi-hop queries, ground-truth answers, and supporting evidence. |
+| `llm-arxiv-2401-15391v1-2` | `arxiv:2401.15391v1` | experiment | 0.65 | Both experiments reveal that existing RAG methods perform unsatisfactorily in retrieving and answering multi-hop queries. |
+| `llm-arxiv-2510-22344v1-1` | `arxiv:2510.22344v1` | contribution | 0.65 | FAIR-RAG achieves a new state-of-the-art on multi-hop QA benchmarks, with an F1-score of 0.453 on HotpotQA. |
+| `llm-arxiv-2510-22344v1-2` | `arxiv:2510.22344v1` | method | 0.65 | FAIR-RAG uses an Iterative Refinement Cycle governed by Structured Evidence Assessment (SEA) to identify evidence gaps and generate targeted sub-queries. |
+| `llm-arxiv-2601-05264v1-1` | `arxiv:2601.05264v1` | contribution | 0.65 | Provides a comprehensive systematic literature review and practical guide for modern RAG architectures. |
+| `llm-arxiv-2602-08545v1-1` | `arxiv:2602.08545v1` | contribution | 0.65 | DA-RAG leverages attributed community search to dynamically extract relevant subgraphs for retrieval. |
+| `llm-arxiv-2602-08545v1-2` | `arxiv:2602.08545v1` | method | 0.65 | DA-RAG captures high-order graph structures and uses a chunk-layer oriented graph index for efficient multi-granularity retrieval. |
+| `llm-arxiv-2602-08545v1-3` | `arxiv:2602.08545v1` | experiment | 0.65 | DA-RAG outperforms existing RAG methods by up to 40% across four metrics and reduces index construction time and token overhead by up to 37% and 41%. |
+| `llm-arxiv-2605-27432v1-1` | `arxiv:2605.27432v1` | contribution | 0.65 | FD-RAG improves accuracy by up to 7.8% and reduces latency by 8.4× compared to baselines. |
+| `llm-arxiv-2605-27432v1-2` | `arxiv:2605.27432v1` | method | 0.65 | FD-RAG learns semantic-aware adaptive hypergraphs and distills them into compact QA memories, using direct memory matching and selective LLM invocation. |
+| `llm-arxiv-2605-27432v1-3` | `arxiv:2605.27432v1` | experiment | 0.65 | FD-RAG shows improved accuracy and latency on QA benchmarks. |
+| `llm-arxiv-2507-13396v1-1` | `arxiv:2507.13396v1` | contribution | 0.65 | DyG-RAG is a novel event-centric dynamic graph RAG framework that captures temporal knowledge. |
+| `llm-arxiv-2507-13396v1-2` | `arxiv:2507.13396v1` | method | 0.65 | DyG-RAG proposes Dynamic Event Units (DEUs) and Time Chain-of-Thought for temporally grounded generation. |
+| `llm-arxiv-2507-13396v1-3` | `arxiv:2507.13396v1` | experiment | 0.65 | DyG-RAG significantly improves accuracy and recall of temporal reasoning questions on temporal QA benchmarks. |
+| `llm-arxiv-2504-12560v1-1` | `arxiv:2504.12560v1` | contribution | 0.65 | CDF-RAG is a causal dynamic feedback framework for adaptive RAG that improves causal consistency and factual accuracy. |
+| `llm-arxiv-2504-12560v1-2` | `arxiv:2504.12560v1` | method | 0.65 | CDF-RAG iteratively refines queries, retrieves structured causal graphs, and enables multi-hop causal reasoning. |
+| `llm-arxiv-2504-12560v1-3` | `arxiv:2504.12560v1` | experiment | 0.65 | CDF-RAG improves response accuracy and causal correctness over existing RAG methods on four diverse datasets. |
+| `llm-arxiv-2604-18509v2-1` | `arxiv:2604.18509v2` | contribution | 0.65 | MASS-RAG introduces a multi-agent synthesis approach for RAG that structures evidence processing into multiple role-specialized agents. |
+| `llm-arxiv-2604-18509v2-2` | `arxiv:2604.18509v2` | experiment | 0.65 | MASS-RAG consistently improves performance over strong RAG baselines on four benchmarks. |
+| `llm-arxiv-2501-00332v1-1` | `arxiv:2501.00332v1` | contribution | 0.65 | MAIN-RAG is a training-free multi-agent filtering framework that improves RAG by adaptively filtering irrelevant documents. |
+| `llm-arxiv-2501-00332v1-2` | `arxiv:2501.00332v1` | experiment | 0.65 | MAIN-RAG achieves 2-11% improvement in answer accuracy while reducing irrelevant documents across four QA benchmarks. |
+| `llm-arxiv-2510-25518v1-1` | `arxiv:2510.25518v1` | contribution | 0.65 | The paper introduces an agentic RAG architecture for fintech with query reformulation, sub-query decomposition, acronym resolution, and re-ranking. |
+| `llm-arxiv-2510-25518v1-2` | `arxiv:2510.25518v1` | limitation | 0.65 | The agentic RAG system outperforms baseline in precision and relevance but with increased latency. |
 
 ## Claim-Evidence Alignment
 
 | Claim ID | Type | Claim | Evidence IDs |
 | --- | --- | --- | --- |
-| `c1` | Synthesis | Research on retrieval augmented generation for large language models is moving from single-step generation toward tool-using, evidence-grounded workflows. | `llm-arxiv-2411-19443v1-1`, `llm-arxiv-2411-19443v1-2`, `llm-arxiv-2503-16581v1-1`, `llm-arxiv-2503-16581v1-2` |
-| `c2` | Hypothesis | A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `llm-arxiv-2503-16581v1-3`, `llm-arxiv-2401-15391v1-3`, `llm-arxiv-2501-09136v4-2` |
+| `c1` | Synthesis | Research on Retrieval-Augmented Generation (RAG) for Large Language Models: Advances, Challenges, and Architectures is moving from single-step generation toward tool-using, evid... | `llm-arxiv-2411-19443v1-1`, `llm-arxiv-2411-19443v1-2`, `llm-arxiv-2501-09136v4-1`, `llm-arxiv-2401-15391v1-1` |
+| `c2` | Hypothesis | A promising research gap is to make the literature review process auditable through claim-evidence alignment and citation checking. | `llm-arxiv-2501-09136v4-2`, `llm-arxiv-2510-25518v1-2` |
 
 ## Citation Checks
 
 | Check ID | Paper ID | Status | Message |
 | --- | --- | --- | --- |
 | `check-1` | `arxiv:2411.19443v1` | passed | Citation metadata is available. |
-| `check-2` | `arxiv:2503.16581v1` | passed | Citation metadata is available. |
+| `check-2` | `arxiv:2501.09136v4` | passed | Citation metadata is available. |
 | `check-3` | `arxiv:2401.15391v1` | passed | Citation metadata is available. |
-| `check-4` | `arxiv:2501.09136v4` | passed | Citation metadata is available. |
-| `check-5` | `arxiv:2602.08545v1` | passed | Citation metadata is available. |
-| `check-6` | `arxiv:2603.26668v2` | passed | Citation metadata is available. |
-| `check-7` | `arxiv:2510.22344v1` | passed | Citation metadata is available. |
-| `check-8` | `arxiv:2501.03995v1` | passed | Citation metadata is available. |
-| `check-9` | `arxiv:2604.18509v2` | passed | Citation metadata is available. |
-| `check-10` | `arxiv:2605.24366v1` | passed | Citation metadata is available. |
-| `check-11` | `arxiv:2605.27432v1` | passed | Citation metadata is available. |
-| `check-12` | `arxiv:2603.08329v1` | passed | Citation metadata is available. |
-| `check-13` | `arxiv:2502.01113v3` | passed | Citation metadata is available. |
-| `check-14` | `arxiv:2507.13396v1` | passed | Citation metadata is available. |
-| `check-15` | `arxiv:2508.05650v1` | passed | Citation metadata is available. |
+| `check-4` | `arxiv:2510.22344v1` | passed | Citation metadata is available. |
+| `check-5` | `arxiv:2601.05264v1` | passed | Citation metadata is available. |
+| `check-6` | `arxiv:2602.08545v1` | passed | Citation metadata is available. |
+| `check-7` | `arxiv:2605.27432v1` | passed | Citation metadata is available. |
+| `check-8` | `arxiv:2507.13396v1` | passed | Citation metadata is available. |
+| `check-9` | `arxiv:2504.12560v1` | passed | Citation metadata is available. |
+| `check-10` | `arxiv:2604.18509v2` | passed | Citation metadata is available. |
+| `check-11` | `arxiv:2501.00332v1` | passed | Citation metadata is available. |
+| `check-12` | `arxiv:2510.25518v1` | passed | Citation metadata is available. |
 
 ## Agent Trace
 
 | Step | Node | Status | Output Keys |
 | ---: | --- | --- | --- |
-| 1 | `plan_queries` | success | `query_plan` |
+| 1 | `plan_queries` | success | `effective_topic, query_plan, refined_topic, topic_refinement, topic_refinement_fallback_reason, topic_refinement_used` |
 | 2 | `search_papers` | success | `actual_source, fallback_reason, searched_papers, temporal_profile` |
 | 3 | `rank_papers` | success | `corpus_profile, ranked_candidates, research_lens, selected_papers` |
 | 4 | `extract_evidence` | success | `evidence_items, llm_chunk_count, llm_fallback_reason, llm_used` |
@@ -211,15 +195,17 @@ A domain-aware lens that checks whether selected RAG papers cover survey, retrie
 
 | Metric | Value |
 | --- | --- |
-| `query_count` | `5` |
+| `query_count` | `10` |
+| `query_angle_count` | `8` |
+| `adjacent_query_count` | `5` |
 | `searched_paper_count` | `50` |
-| `selected_paper_count` | `15` |
-| `candidate_limit` | `120` |
+| `selected_paper_count` | `12` |
+| `candidate_limit` | `96` |
 | `candidate_multiplier` | `8` |
 | `from_year` | `2020` |
-| `evidence_count` | `51` |
+| `evidence_count` | `27` |
 | `claim_count` | `2` |
-| `citation_check_count` | `15` |
+| `citation_check_count` | `12` |
 | `citation_check_pass_rate` | `1.0` |
 | `claim_evidence_coverage` | `1.0` |
 | `unsupported_claim_rate` | `0.0` |
@@ -232,7 +218,11 @@ A domain-aware lens that checks whether selected RAG papers cover survey, retrie
 | `llm_provider` | `deepseek` |
 | `llm_used` | `True` |
 | `llm_fallback_reason` | `` |
-| `llm_chunk_count` | `4` |
+| `llm_chunk_count` | `3` |
+| `refine_topic` | `True` |
+| `effective_topic` | `Retrieval-Augmented Generation (RAG) for Large Language Models: Advances, Challenges, and Architectures` |
+| `topic_refinement_used` | `True` |
+| `topic_refinement_fallback_reason` | `` |
 | `earliest_candidate_year` | `2022` |
 | `latest_candidate_year` | `2026` |
 | `recent_3_year_ratio` | `0.96` |
