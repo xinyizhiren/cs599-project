@@ -148,6 +148,14 @@ python -m researchflow run "retrieval augmented generation for large language mo
 
 DeepSeek 只用于证据抽取和报告背景段落润色。证据抽取会按批次处理核心论文，避免把大量摘要一次性塞进上下文窗口。若未配置 Key、网络超时或模型输出无法解析，系统会自动回退到规则实现，并在 metrics 中记录 `llm_fallback_reason`。过程记录输出的是可审计 Agent 行为，不包含大模型隐藏思考链。
 
+OpenAlex + DeepSeek 轻量 smoke test：
+
+```powershell
+python -m researchflow run "retrieval augmented generation for large language models" --source openalex --require-live --llm deepseek --top-k 3 --max-candidates 12 --from-year 2023 --depth 2 --breadth 3 --report-style full --output docs/generated_reports/rag_openalex_deepseek_smoke.md --summary-output docs/generated_reports/rag_openalex_deepseek_summary.md --process-output docs/generated_reports/rag_openalex_deepseek_process.md
+```
+
+当前仓库已包含一次成功运行样例：`actual_source=openalex`，`llm_used=true`，用于证明真实学术源检索和 DeepSeek 证据抽取可以闭环。
+
 ### 8. 运行模糊主题修正与多角度调研
 
 ```powershell
