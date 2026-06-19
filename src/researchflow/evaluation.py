@@ -9,7 +9,7 @@ from .models import CitationCheck, ClaimRecord, PaperRecord
 from .state import ResearchState
 
 
-EXPECTED_REPORT_SECTIONS = [
+LEGACY_REPORT_SECTIONS = [
     "## 1. 研究背景",
     "## 2. 核心文献",
     "## 3. 关键结论与证据",
@@ -19,6 +19,32 @@ EXPECTED_REPORT_SECTIONS = [
     "## 7. 自动化调研局限",
     "## 参考文献",
 ]
+
+FULL_REPORT_SECTIONS = [
+    "## 1. 摘要",
+    "## 2. 调研问题与检索策略",
+    "## 3. 文献覆盖与时间分布",
+    "## 4. 研究脉络与方法分类",
+    "## 5. 核心论文精读",
+    "## 6. 方法对比表",
+    "## 7. 数据集与评测指标",
+    "## 8. 主要结论与证据",
+    "## 9. 争议、局限与研究空白",
+    "## 10. 未来方向",
+    "## 11. 参考文献",
+    "## 12. 附录：Evidence Matrix 与调研过程",
+]
+
+VALID_SOURCES = {
+    "offline",
+    "arxiv",
+    "semantic_scholar",
+    "crossref",
+    "openalex",
+    "web",
+    "hybrid",
+    "mixed",
+}
 
 
 def _safe_divide(numerator: float, denominator: float) -> float:
@@ -38,8 +64,6 @@ def claim_evidence_coverage(claims: list[ClaimRecord]) -> float:
 
 
 def hallucinated_reference_count(selected_papers: list[PaperRecord], report_markdown: str) -> int:
-    # The report writer emits references only from selected_papers. This guard
-    # still catches accidental future references that include non-selected IDs.
     known_urls = {paper.url for paper in selected_papers}
     reference_lines = [
         line for line in report_markdown.splitlines() if line.startswith("[P") and "http" in line
@@ -47,9 +71,16 @@ def hallucinated_reference_count(selected_papers: list[PaperRecord], report_mark
     return sum(1 for line in reference_lines if not any(url in line for url in known_urls))
 
 
+def _section_score(report_markdown: str, sections: list[str]) -> float:
+    present = sum(1 for heading in sections if heading in report_markdown)
+    return _safe_divide(present, len(sections))
+
+
 def section_completeness(report_markdown: str) -> float:
-    present = sum(1 for heading in EXPECTED_REPORT_SECTIONS if heading in report_markdown)
-    return _safe_divide(present, len(EXPECTED_REPORT_SECTIONS))
+    return max(
+        _section_score(report_markdown, LEGACY_REPORT_SECTIONS),
+        _section_score(report_markdown, FULL_REPORT_SECTIONS),
+    )
 
 
 def duplicate_rate(papers: list[PaperRecord]) -> float:
@@ -57,6 +88,31 @@ def duplicate_rate(papers: list[PaperRecord]) -> float:
         return 0.0
     unique = {paper.paper_id or paper.url or paper.title for paper in papers}
     return 1.0 - _safe_divide(len(unique), len(papers))
+
+
+def diversity_ratio(values: list[str]) -> float:
+    if not values:
+        return 0.0
+    return min(1.0, _safe_divide(len(set(values)), len(values)) * 3)
+
+
+def evidence_matrix_coverage(matrix: list[dict[str, Any]], selected: list[PaperRecord]) -> float:
+    if not selected:
+        return 0.0
+    covered = {
+        str(row.get("paper_id", ""))
+        for row in matrix
+        if row.get("paper_id") and row.get("evidence_ids")
+    }
+    return _safe_divide(len(covered), len(selected))
+
+
+def _actual_sources(actual_source: str) -> set[str]:
+    if actual_source == "hybrid":
+        return {"hybrid", "arxiv", "semantic_scholar", "crossref", "openalex"}
+    if actual_source == "mixed":
+        return {"mixed", "arxiv", "semantic_scholar", "crossref", "openalex", "web"}
+    return {item for item in actual_source.split("+") if item}
 
 
 def evaluate_state(state: ResearchState) -> dict[str, Any]:
@@ -71,6 +127,10 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     errors = state.get("errors", [])
     research_lens = state.get("research_lens", {})
     temporal_profile = state.get("temporal_profile", {})
+    evidence_matrix = state.get("evidence_matrix", [])
+    coverage_gaps = state.get("coverage_gaps", [])
+    expansion_rounds = state.get("expansion_rounds", [])
+
     query_angles = {
         str(getattr(query, "filters", {}).get("angle", ""))
         for query in query_plan
@@ -90,38 +150,41 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     top_k = max(int(state.get("top_k", 1)), 1)
     top_k_relevance = _safe_divide(sum(1 for paper in selected if paper.score > 0), len(selected))
     source_success = 1.0 if searched else 0.0
+    source_diversity = diversity_ratio([paper.source for paper in searched])
+    paper_type_diversity = diversity_ratio([getattr(paper, "paper_type", "unknown") for paper in selected])
     retrieval_score = 20 * (
-        (top_k_relevance * 0.5)
-        + ((1.0 - duplicate_rate(searched)) * 0.2)
-        + (min(len(selected), top_k) / top_k * 0.2)
+        (top_k_relevance * 0.38)
+        + ((1.0 - duplicate_rate(searched)) * 0.18)
+        + (min(len(selected), top_k) / top_k * 0.18)
         + (source_success * 0.1)
+        + (source_diversity * 0.08)
+        + (paper_type_diversity * 0.08)
     )
 
     citation_rate = citation_validity(checks)
     evidence_coverage = claim_evidence_coverage(claims)
+    matrix_coverage = evidence_matrix_coverage(evidence_matrix, selected)
     unsupported_claim_rate = 1.0 - evidence_coverage
     hallucinated_refs = hallucinated_reference_count(selected, report)
     evidence_score = 25 * (
-        (citation_rate * 0.35)
-        + (evidence_coverage * 0.4)
-        + ((1.0 - unsupported_claim_rate) * 0.15)
+        (citation_rate * 0.32)
+        + (evidence_coverage * 0.34)
+        + (matrix_coverage * 0.12)
+        + ((1.0 - unsupported_claim_rate) * 0.12)
         + ((1.0 if hallucinated_refs == 0 else 0.0) * 0.1)
     )
 
     completeness = section_completeness(report)
-    method_taxonomy_quality = (
-        1.0
-        if ("### 贡献" in report or "### Contribution" in report)
-        and ("### 局限" in report or "### Limitation" in report)
-        else 0.5
-    )
-    research_gap_usefulness = (
-        1.0
-        if ("## 6. 研究空白" in report or "Research Gaps" in report)
-        and ("证据：" in report or "Evidence:" in report)
-        else 0.5
-    )
-    readability = 1.0 if len(report.split()) >= 120 else 0.6
+    method_taxonomy_quality = 1.0 if (
+        ("## 4. 研究脉络与方法分类" in report and "## 6. 方法对比表" in report)
+        or ("Contribution" in report and "Limitation" in report)
+        or ("贡献" in report and "局限" in report)
+    ) else 0.5
+    research_gap_usefulness = 1.0 if (
+        ("## 9. 争议、局限与研究空白" in report and "Evidence Matrix" in report)
+        or ("研究空白" in report and ("Evidence" in report or "证据" in report))
+    ) else 0.5
+    readability = 1.0 if len(report) >= 2000 else 0.6
     report_score = 20 * (
         (completeness * 0.4)
         + (method_taxonomy_quality * 0.25)
@@ -129,15 +192,12 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         + (readability * 0.15)
     )
 
-    expected_nodes = 7
-    actual_sources = {
-        item for item in str(state.get("actual_source", "")).split("+") if item
-    }
-    valid_sources = {"offline", "arxiv", "semantic_scholar", "crossref", "hybrid"}
+    expected_nodes = 8
+    actual_sources = _actual_sources(str(state.get("actual_source", "")))
     tool_call_correctness = (
         1.0
         if actual_sources
-        and all(item in valid_sources for item in actual_sources)
+        and all(item in VALID_SOURCES for item in actual_sources)
         and searched
         else 0.0
     )
@@ -152,6 +212,7 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     )
 
     overall_score = task_completion_score + retrieval_score + evidence_score + report_score + agent_score
+    query_gap_recovery = 1.0 if not coverage_gaps else 0.7 if expansion_rounds else 0.0
     return {
         "query_count": len(query_plan),
         "query_angle_count": len(query_angles),
@@ -166,9 +227,14 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "citation_check_count": len(checks),
         "citation_check_pass_rate": _round(citation_rate),
         "claim_evidence_coverage": _round(evidence_coverage),
+        "evidence_matrix_coverage": _round(matrix_coverage),
         "unsupported_claim_rate": _round(unsupported_claim_rate),
         "hallucinated_reference_count": hallucinated_refs,
         "report_section_completeness": _round(completeness),
+        "source_diversity": _round(source_diversity),
+        "paper_type_diversity": _round(paper_type_diversity),
+        "coverage_gap_count": len(coverage_gaps),
+        "query_gap_recovery": _round(query_gap_recovery),
         "node_trace_count": len(trace),
         "requested_source": state.get("requested_source", ""),
         "actual_source": state.get("actual_source", ""),
@@ -209,8 +275,8 @@ def render_evaluation_markdown(summary: dict[str, Any]) -> str:
         "",
         "## Task Results",
         "",
-        "| Topic | Status | Score | Citation Validity | Evidence Coverage | Sections | Source |",
-        "| --- | --- | ---: | ---: | ---: | ---: | --- |",
+        "| Topic | Status | Score | Citation Validity | Evidence Coverage | Matrix | Sections | Source |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for item in summary["results"]:
         metrics = item["metrics"]
@@ -224,6 +290,7 @@ def render_evaluation_markdown(summary: dict[str, Any]) -> str:
                     f"{metrics.get('overall_score', 0):.3f}",
                     f"{metrics.get('citation_check_pass_rate', 0):.3f}",
                     f"{metrics.get('claim_evidence_coverage', 0):.3f}",
+                    f"{metrics.get('evidence_matrix_coverage', 0):.3f}",
                     f"{metrics.get('report_section_completeness', 0):.3f}",
                     str(metrics.get("actual_source", "")),
                 ]

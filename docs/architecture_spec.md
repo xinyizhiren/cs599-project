@@ -29,8 +29,8 @@ CLI/API Entry
 | --- | --- |
 | CLI/API Entry | 接收用户主题、Top-K、输出路径等参数 |
 | ResearchGraph Orchestrator | 维护任务状态、节点路由、失败重试、trace 和 fallback |
-| Agent Nodes | Topic Refiner、Query Planner、Searcher、Reader、Extractor、Synthesizer、Checker、Reporter |
-| Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、PDF parser、Markdown writer |
+| Agent Nodes | Topic Refiner、Query Planner、Searcher、Ranker、Gap Expander、Extractor、Synthesizer、Checker、Reporter |
+| Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、Tavily Web、PDF parser、Markdown writer |
 | Storage and Memory | 本地 session 文件保存任务、消息、论文、证据、报告和 trace；SQLite 作为后续扩展 |
 | Evaluation and Observability | 记录指标、节点日志、benchmark 结果 |
 
@@ -41,16 +41,13 @@ flowchart TD
     A["User Topic"] --> R["Optional Topic Refiner"]
     R --> B["Query Planner"]
     B --> C["Paper Searcher"]
-    C --> D["Paper Ranker"]
-    D --> E{"Enough Papers?"}
-    E -- "No" --> B
-    E -- "Yes" --> F["Paper Reader"]
+    C --> D["Coverage-aware Paper Ranker"]
+    D --> E["Coverage Gap Detector"]
+    E --> F["One-round Expansion Search"]
     F --> G["Evidence Extractor"]
-    G --> H["Research Synthesizer"]
+    G --> H["Evidence Matrix + Claim Graph"]
     H --> I["Citation Checker"]
-    I --> J{"Claims Supported?"}
-    J -- "No" --> C
-    J -- "Yes" --> K["Report Writer"]
+    I --> K["Full Chinese Report Writer"]
     K --> L["Markdown Report"]
     L --> S["Session Store"]
     S --> Cn["Conversation Controller"]
@@ -93,10 +90,26 @@ flowchart TD
 - `search_arxiv`
 - `search_semantic_scholar`
 - `search_openalex`
+- `search_crossref`
+- `search_tavily`（可选 Web 背景源，无 Key 时跳过）
 
 输出：
 
 - `searched_papers`
+- `source_results`
+
+### 4.2.1 Coverage Gap Expander
+
+职责：
+
+- 根据 Research Lens、论文类型分布和时间分布识别覆盖缺口。
+- 对缺少 survey、method、benchmark、security 等方向的任务追加一轮补搜。
+- 合并补搜结果并重新执行覆盖感知排序，避免报告只覆盖偶然召回的局部文献。
+
+输出：
+
+- `coverage_gaps`
+- `expansion_rounds`
 
 ### 4.3 Paper Ranker
 
@@ -141,10 +154,14 @@ flowchart TD
 - 构建方法对比表。
 - 总结研究趋势和空白。
 - 区分事实、综合判断和假设。
+- 生成 Evidence Matrix，将研究问题、论文和证据类型对齐。
+- 生成 Claim Graph，将结论、支持证据、局限和置信提示连接起来。
 
 输出：
 
-- `synthesis`
+- `claims`
+- `evidence_matrix`
+- `claim_graph`
 
 ### 4.7 Citation Checker
 
@@ -192,10 +209,20 @@ class ResearchState(TypedDict):
     topic_refinement: dict
     constraints: dict
     query_plan: list[dict]
+    query_tree: dict
+    subtopics: list[dict]
+    source_results: dict
     searched_papers: list[dict]
+    ranked_candidates: list[dict]
     selected_papers: list[dict]
+    research_lens: dict
+    corpus_profile: dict
+    coverage_gaps: list[dict]
+    expansion_rounds: list[dict]
     evidence_items: list[dict]
+    evidence_matrix: list[dict]
     claims: list[dict]
+    claim_graph: list[dict]
     citation_checks: list[dict]
     report_markdown: str
     node_trace: list[dict]

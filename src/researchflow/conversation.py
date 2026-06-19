@@ -13,14 +13,20 @@ from .llm import LLMError, build_llm_client
 from .models import QueryItem
 from .pipeline import (
     DEFAULT_FROM_YEAR,
+    build_claim_graph,
     build_corpus_profile,
+    build_evidence_matrix,
     build_research_lens,
+    build_source_results,
+    build_temporal_profile,
     check_citations,
     dedupe_papers,
+    detect_coverage_gaps,
     filter_papers_by_year,
     node_extract_evidence,
     node_write_report,
     rank_all_papers,
+    select_diverse_papers,
     search_selected_sources,
     synthesize_claims,
 )
@@ -260,19 +266,45 @@ def _rebuild_after_selection_change(state: ResearchState, action: str) -> None:
         if paper.paper_id not in excluded
     ]
     ranked = rank_all_papers(searched, effective_topic)
-    selected = ranked[: int(state.get("top_k", 5))]
+    selected = select_diverse_papers(ranked, int(state.get("top_k", 5)), effective_topic)
     state["searched_papers"] = searched
     state["ranked_candidates"] = ranked
     state["selected_papers"] = selected
-    state["research_lens"] = build_research_lens(effective_topic, selected)
-    state["corpus_profile"] = build_corpus_profile(
+    research_lens = build_research_lens(effective_topic, selected)
+    corpus_profile = build_corpus_profile(
         effective_topic,
         ranked,
         selected,
         state.get("from_year"),
     )
+    state["research_lens"] = research_lens
+    state["corpus_profile"] = corpus_profile
+    state["temporal_profile"] = build_temporal_profile(searched)
+    state["coverage_gaps"] = detect_coverage_gaps(
+        effective_topic,
+        selected,
+        research_lens,
+        corpus_profile.get("temporal_profile", {}),
+    )
+    state["source_results"] = build_source_results(
+        searched,
+        state.get("actual_source", ""),
+        state.get("fallback_reason", ""),
+    )
     state.update(node_extract_evidence(state))
-    state["claims"] = synthesize_claims(effective_topic, state["evidence_items"])
+    claims = synthesize_claims(effective_topic, state["evidence_items"])
+    state["claims"] = claims
+    research_questions = [
+        branch.get("question", "")
+        for branch in state.get("query_tree", {}).get("branches", [])
+        if branch.get("question")
+    ]
+    state["evidence_matrix"] = build_evidence_matrix(
+        research_questions,
+        selected,
+        state["evidence_items"],
+    )
+    state["claim_graph"] = build_claim_graph(claims, state["evidence_items"], selected)
     state["citation_checks"] = check_citations(selected, state["claims"])
     state.update(node_write_report(state))
     state["metrics"] = evaluate_state(state)
@@ -391,6 +423,7 @@ def apply_conversation_action(
             query_plan=[query],
             sources=state.get("selected_sources", [state.get("requested_source", "offline")]),
             limit=int(state.get("candidate_limit", 40)),
+            web_provider=state.get("web_provider", "tavily"),
         )
         merged = dedupe_papers(list(state.get("searched_papers", [])) + raw_papers)
         state["searched_papers"] = merged

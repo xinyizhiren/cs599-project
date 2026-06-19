@@ -64,7 +64,7 @@ def test_rewrite_report_updates_summary_without_new_citations() -> None:
 def test_expand_search_adds_query_and_rebuilds(monkeypatch) -> None:
     state = _offline_state("retrieval augmented generation")
 
-    def fake_search(topic, query_plan, sources, limit):
+    def fake_search(topic, query_plan, sources, limit, **kwargs):
         return (
             [
                 PaperRecord(

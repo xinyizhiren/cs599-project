@@ -44,9 +44,46 @@ def build_parser() -> argparse.ArgumentParser:
             "semantic_scholar",
             "semantic-scholar",
             "crossref",
+            "openalex",
+            "web",
             "hybrid",
+            "mixed",
         ],
-        help="Paper data source. Use hybrid for live arXiv + Semantic Scholar + Crossref search.",
+        help=(
+            "Paper data source. Use hybrid for live arXiv + Semantic Scholar + Crossref + "
+            "OpenAlex search; use mixed for academic sources plus optional web search."
+        ),
+    )
+    run_parser.add_argument(
+        "--min-year",
+        dest="from_year",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="Alias for --from-year. Keep candidates from this year onward.",
+    )
+    run_parser.add_argument(
+        "--depth",
+        type=int,
+        default=2,
+        help="Query tree depth for deep research style planning. Defaults to 2.",
+    )
+    run_parser.add_argument(
+        "--breadth",
+        type=int,
+        default=4,
+        help="Research question breadth for query planning. Defaults to 4.",
+    )
+    run_parser.add_argument(
+        "--report-style",
+        default="full",
+        choices=["full", "summary", "course"],
+        help="Report rendering style. Defaults to full Chinese literature review.",
+    )
+    run_parser.add_argument(
+        "--web-provider",
+        default="tavily",
+        choices=["off", "tavily"],
+        help="Optional web search provider for mixed/web source. Defaults to tavily.",
     )
     run_parser.add_argument("--output", default=None, help="Markdown report output path.")
     run_parser.add_argument(
@@ -114,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
             max_candidates=args.max_candidates,
             from_year=args.from_year,
             refine_topic=args.refine_topic,
+            depth=args.depth,
+            breadth=args.breadth,
+            report_style=args.report_style,
+            web_provider=args.web_provider,
         )
         print(f"Task ID: {result.task_id}")
         print(f"Status: {result.status}")

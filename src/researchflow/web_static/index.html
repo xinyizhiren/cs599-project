@@ -36,6 +36,8 @@
             <label><input type="checkbox" name="sources" value="arxiv" /> arXiv</label>
             <label><input type="checkbox" name="sources" value="semantic_scholar" /> Semantic</label>
             <label><input type="checkbox" name="sources" value="crossref" /> Crossref</label>
+            <label><input type="checkbox" name="sources" value="openalex" /> OpenAlex</label>
+            <label><input type="checkbox" name="sources" value="web" /> Web</label>
           </fieldset>
 
           <div class="form-grid">
@@ -47,7 +49,32 @@
               <span>起始年份</span>
               <input id="from-year" name="from_year" type="number" min="0" max="2100" value="2020" />
             </label>
+            <label class="field">
+              <span>Depth</span>
+              <input id="depth" name="depth" type="number" min="1" max="4" value="2" />
+            </label>
+            <label class="field">
+              <span>Breadth</span>
+              <input id="breadth" name="breadth" type="number" min="1" max="8" value="4" />
+            </label>
           </div>
+
+          <label class="field">
+            <span>报告类型</span>
+            <select id="report-style" name="report_style">
+              <option value="full" selected>完整中文调研报告</option>
+              <option value="summary">快速总结</option>
+              <option value="course">课程报告材料</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Web 检索</span>
+            <select id="web-provider" name="web_provider">
+              <option value="tavily" selected>Tavily（无 Key 自动跳过）</option>
+              <option value="off">关闭 Web</option>
+            </select>
+          </label>
 
           <label class="toggle-row">
             <input id="require-live" name="require_live" type="checkbox" />

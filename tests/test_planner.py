@@ -1,5 +1,5 @@
 from researchflow.pipeline import node_plan_queries
-from researchflow.planner import plan_queries
+from researchflow.planner import build_query_tree, plan_queries
 
 
 def test_plan_queries_includes_multi_angle_and_adjacent_intents() -> None:
@@ -20,6 +20,26 @@ def test_plan_queries_includes_multi_angle_and_adjacent_intents() -> None:
     assert "adjacent_topic" in angles
     assert "adjacent" in distances
     assert all(query.filters["from_year"] == 2024 for query in queries)
+
+
+def test_build_query_tree_contains_questions_and_adjacent_queries() -> None:
+    tree = build_query_tree(
+        "retrieval augmented generation",
+        source="mixed",
+        research_questions=["How should RAG systems be evaluated?"],
+        adjacent_topics=["citation hallucination"],
+        from_year=2024,
+        depth=2,
+        breadth=3,
+    )
+
+    assert tree["depth"] == 2
+    assert len(tree["branches"]) >= 1
+    assert tree["branches"][0]["question"]
+    subtopics = [item for branch in tree["branches"] for item in branch["subtopics"]]
+    assert subtopics
+    assert any(item["distance"] == "adjacent" for item in subtopics)
+    assert any(item["angle"] in {"benchmark", "method", "web_background", "core"} for item in subtopics)
 
 
 def test_node_plan_queries_refines_fuzzy_topic_with_llm(monkeypatch) -> None:

@@ -174,13 +174,17 @@ function renderInspector(run) {
 
 function renderQueryPlan(run) {
   const queries = run?.snapshots?.query_plan || [];
-  if (!queries.length) {
+  const queryTree = run?.snapshots?.query_tree || {};
+  const coverageGaps = run?.snapshots?.coverage_gaps || [];
+  const expansionRounds = run?.snapshots?.expansion_rounds || [];
+  const evidenceMatrix = run?.snapshots?.evidence_matrix || [];
+  if (!queries.length && !(queryTree.branches || []).length) {
     queryPlan.className = "query-plan empty-state";
     queryPlan.textContent = "暂无数据";
     return;
   }
   queryPlan.className = "query-plan";
-  queryPlan.innerHTML = queries
+  const queryRows = queries
     .map(
       (query) => `
         <div class="query-row">
@@ -191,6 +195,53 @@ function renderQueryPlan(run) {
       `,
     )
     .join("");
+  const treeRows = (queryTree.branches || [])
+    .slice(0, 5)
+    .map((branch) => {
+      const angles = [...new Set((branch.subtopics || []).map((item) => item.angle).filter(Boolean))];
+      return `
+        <div class="query-row">
+          <strong>${escapeText(branch.question_id || "rq")}</strong>
+          <p>${escapeText(branch.question || "")}</p>
+          <small>${escapeText(angles.join(", "))}</small>
+        </div>
+      `;
+    })
+    .join("");
+  const gapRows = coverageGaps
+    .slice(0, 6)
+    .map(
+      (gap) => `
+        <div class="query-row">
+          <strong>Gap / ${escapeText(gap.label || "")}</strong>
+          <p>${escapeText(gap.reason || "")}</p>
+          <small>${escapeText(gap.suggested_angle || "")}</small>
+        </div>
+      `,
+    )
+    .join("");
+  const matrixRows = evidenceMatrix
+    .slice(0, 5)
+    .map(
+      (row) => `
+        <div class="query-row">
+          <strong>${escapeText(row.question_id || "")} / ${escapeText(row.paper_id || "")}</strong>
+          <p>${escapeText(row.question || "")}</p>
+          <small>${escapeText((row.evidence_ids || []).join(", "))}</small>
+        </div>
+      `,
+    )
+    .join("");
+  const expansionText = expansionRounds.length
+    ? `<div class="query-row"><strong>Expansion</strong><p>${escapeText(expansionRounds.length)} round(s), ${escapeText(expansionRounds.map((item) => item.added_candidates || 0).join(" + "))} added candidates</p></div>`
+    : "";
+  queryPlan.innerHTML = `
+    ${queryRows}
+    ${treeRows ? `<h4>Query Tree</h4>${treeRows}` : ""}
+    ${gapRows ? `<h4>Coverage Gaps</h4>${gapRows}` : ""}
+    ${expansionText}
+    ${matrixRows ? `<h4>Evidence Matrix</h4>${matrixRows}` : ""}
+  `;
 }
 
 function renderPapers(run) {
@@ -365,6 +416,10 @@ form.addEventListener("submit", async (event) => {
     sources: sources.length ? sources : ["offline"],
     top_k: Number(formData.get("top_k")),
     from_year: Number(formData.get("from_year")),
+    depth: Number(formData.get("depth")),
+    breadth: Number(formData.get("breadth")),
+    report_style: formData.get("report_style"),
+    web_provider: formData.get("web_provider"),
     require_live: formData.get("require_live") === "on",
     llm: formData.get("llm_deepseek") === "on" ? "deepseek" : "off",
     refine_topic: formData.get("refine_topic") === "on",

@@ -242,6 +242,377 @@ def render_report(
     return "\n".join(lines) + "\n"
 
 
+def _safe_join(items: list[str], fallback: str = "无") -> str:
+    cleaned = [str(item) for item in items if str(item).strip()]
+    return "、".join(cleaned) if cleaned else fallback
+
+
+def _paper_citation(paper: PaperRecord, index: int) -> str:
+    authors = ", ".join(paper.authors[:6]) if paper.authors else "Unknown authors"
+    suffix = " et al." if len(paper.authors) > 6 else ""
+    return f"[P{index}] {authors}{suffix}. ({paper.year}). {paper.title}. {paper.url}"
+
+
+def render_full_report(state: dict[str, Any]) -> str:
+    """Render a complete Chinese literature review organized by questions and evidence."""
+
+    topic = str(state.get("effective_topic") or state.get("topic", ""))
+    original_topic = str(state.get("topic", topic))
+    selected_papers: list[PaperRecord] = state.get("selected_papers", [])
+    ranked_candidates: list[PaperRecord] = state.get("ranked_candidates", [])
+    searched_papers: list[PaperRecord] = state.get("searched_papers", [])
+    evidence_items: list[EvidenceItem] = state.get("evidence_items", [])
+    claims: list[ClaimRecord] = state.get("claims", [])
+    citation_checks: list[CitationCheck] = state.get("citation_checks", [])
+    query_plan = state.get("query_plan", [])
+    query_tree = state.get("query_tree", {})
+    evidence_matrix = state.get("evidence_matrix", [])
+    claim_graph = state.get("claim_graph", [])
+    research_lens = state.get("research_lens", {})
+    corpus_profile = state.get("corpus_profile", {})
+    source_results = state.get("source_results", {})
+    coverage_gaps = state.get("coverage_gaps", [])
+    expansion_rounds = state.get("expansion_rounds", [])
+    metrics = state.get("metrics", {})
+    temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {})
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    evidence_by_paper: dict[str, list[EvidenceItem]] = defaultdict(list)
+    for item in evidence_items:
+        evidence_by_paper[item.paper_id].append(item)
+    check_by_paper = {check.paper_id: check for check in citation_checks}
+    refs = {paper.paper_id: f"P{index}" for index, paper in enumerate(selected_papers, start=1)}
+    academic_papers = [paper for paper in selected_papers if paper.source != "web"]
+    web_sources = [paper for paper in selected_papers if paper.source == "web"]
+
+    source_counts = source_results.get("source_counts", {})
+    paper_type_counts = corpus_profile.get("selected_paper_type_counts", {})
+    candidate_count = len(ranked_candidates) or len(searched_papers)
+    lens_coverage = float(research_lens.get("coverage", 0.0)) if research_lens else 0.0
+    citation_rate = float(metrics.get("citation_check_pass_rate", _citation_pass_rate(citation_checks)))
+    evidence_coverage = float(metrics.get("claim_evidence_coverage", 0.0))
+
+    questions = [
+        str(branch.get("question", ""))
+        for branch in query_tree.get("branches", [])
+        if branch.get("question")
+    ]
+    if not questions:
+        questions = [
+            f"{topic} 的核心问题、主流方法、评测方式和研究空白是什么？",
+            f"{topic} 近几年有哪些值得优先阅读的代表性论文？",
+        ]
+
+    lines: list[str] = [
+        f"# {original_topic}：中文文献调研报告",
+        "",
+        f"- 生成时间：{generated_at}",
+        f"- 有效检索主题：`{topic}`",
+        f"- 检索来源：`{state.get('actual_source', 'unknown')}`",
+        f"- 候选文献数：{candidate_count}",
+        f"- 核心文献数：{len(selected_papers)}",
+        f"- Evidence 条目数：{len(evidence_items)}",
+        f"- Citation validity：{citation_rate:.3f}",
+        f"- Claim-Evidence coverage：{evidence_coverage:.3f}",
+        "",
+        "## 1. 摘要",
+        "",
+        (
+            f"本报告围绕“{original_topic}”开展自动化学术调研。ResearchFlow 先将模糊主题规范化为可检索的问题树，"
+            f"再从 {source_counts or {'source': state.get('actual_source', 'unknown')}} 等来源召回候选材料，经过去重、年份过滤、"
+            "覆盖感知排序、论文类型平衡和覆盖缺口补搜后，抽取 Evidence Ledger，并把关键结论绑定到可追溯证据。"
+        ),
+        "",
+        (
+            "调研的重点不是把所有论文逐篇堆叠，而是回答三个问题：这个领域正在解决什么问题、已有方法如何形成谱系、"
+            "哪些结论有证据支持以及哪些方向仍然存在研究空白。由于当前版本主要读取标题、摘要和开放元数据，报告适合作为"
+            "快速建立领域地图和确定精读清单的初稿；涉及实验数值、方法细节和强因果判断时仍需要人工复核全文。"
+        ),
+        "",
+        "## 2. 调研问题与检索策略",
+        "",
+        "本次调研采用 Deep Research 风格的分层查询：先生成研究问题，再为每个问题展开直接查询和相邻角度查询。相邻角度会覆盖综述、方法、评测、数据集、应用、安全、局限和近期进展，避免只检索与主题字面完全一致的论文。",
+        "",
+        "| 研究问题 | 子查询数量 | 查询角度 |",
+        "| --- | ---: | --- |",
+    ]
+    for branch in query_tree.get("branches", []):
+        subtopics = branch.get("subtopics", [])
+        angles = sorted({str(item.get("angle", "")) for item in subtopics if item.get("angle")})
+        lines.append(
+            f"| {_clip_table_text(str(branch.get('question', '')), 120)} | {len(subtopics)} | {_safe_join(angles)} |"
+        )
+    if not query_tree.get("branches"):
+        angles = sorted(
+            {
+                str(getattr(query, "filters", {}).get("angle", ""))
+                for query in query_plan
+                if getattr(query, "filters", {}).get("angle")
+            }
+        )
+        lines.append(f"| {questions[0]} | {len(query_plan)} | {_safe_join(angles)} |")
+
+    lines.extend(
+        [
+            "",
+            "检索过程保留了可审计记录：每条查询包含 query id、查询文本、来源意图、年份过滤和查询角度；若覆盖检测发现缺少综述、方法、评测或安全等方向，会自动追加一次补搜。",
+            "",
+            "## 3. 文献覆盖与时间分布",
+            "",
+            f"候选池共包含 {candidate_count} 条去重后记录，核心集合包含 {len(selected_papers)} 篇。年份范围为 {_format_year_range(temporal_profile)}，近三年占比为 {float(temporal_profile.get('last_3_year_ratio', 0.0)):.3f}，近五年占比为 {float(temporal_profile.get('last_5_year_ratio', 0.0)):.3f}。",
+            "",
+            "| 来源 | 候选数量 |",
+            "| --- | ---: |",
+        ]
+    )
+    for source, count in sorted(source_counts.items()):
+        lines.append(f"| {source} | {count} |")
+    if not source_counts:
+        lines.append(f"| {state.get('actual_source', 'unknown')} | {len(searched_papers)} |")
+
+    lines.extend(["", "| 核心论文类型 | 数量 |", "| --- | ---: |"])
+    for paper_type, count in sorted(paper_type_counts.items()):
+        lines.append(f"| {paper_type} | {count} |")
+    if not paper_type_counts:
+        lines.append("| unknown | 0 |")
+
+    lines.extend(["", "| 年份 | 候选数量 |", "| ---: | ---: |"])
+    for year, count in temporal_profile.get("year_counts", {}).items():
+        lines.append(f"| {year} | {count} |")
+
+    lines.extend(
+        [
+            "",
+            "## 4. 研究脉络与方法分类",
+            "",
+            "本报告用 Research Lens 将核心论文映射到研究方向，而不是按检索结果顺序阅读。这样可以快速判断调研是否覆盖了领域地图中的关键板块。",
+            "",
+        ]
+    )
+    if research_lens:
+        lines.extend(
+            [
+                f"- Lens 覆盖度：{lens_coverage:.3f}",
+                "- 尚未充分覆盖的方向："
+                + (
+                    _safe_join([str(item) for item in research_lens.get("missing_dimensions", [])])
+                    if research_lens.get("missing_dimensions")
+                    else "无明显缺口"
+                ),
+                "",
+                "| 方向 | 覆盖论文数 | 代表论文 |",
+                "| --- | ---: | --- |",
+            ]
+        )
+        for dimension, count in sorted(research_lens.get("dimension_counts", {}).items()):
+            title = _representative_title(dimension, research_lens)
+            lines.append(f"| {_dimension_label(dimension)} | {count} | {_clip_table_text(title, 90)} |")
+    else:
+        lines.append("当前主题未启用专门领域 Lens，系统主要依据论文类型、年份、来源和关键词相关性组织内容。")
+
+    lines.extend(["", "## 5. 核心论文精读", ""])
+    for index, paper in enumerate(selected_papers, start=1):
+        paper_evidence = evidence_by_paper.get(paper.paper_id, [])
+        check = check_by_paper.get(paper.paper_id)
+        lines.extend(
+            [
+                f"### P{index}. {paper.title}",
+                "",
+                f"- 年份：{paper.year}",
+                f"- 来源：{paper.source}",
+                f"- 类型：{paper.paper_type}",
+                f"- 作者：{', '.join(paper.authors[:8]) if paper.authors else 'Unknown'}",
+                f"- URL：{paper.url}",
+                f"- 引用校验：{check.status if check else 'warning'}",
+                f"- 摘要压缩：{_first_sentence(paper.abstract, 260)}",
+            ]
+        )
+        if paper_evidence:
+            lines.append("- 证据摘要：")
+            for item in paper_evidence[:3]:
+                lines.append(f"  - `{item.evidence_id}` {item.category}: {_clip_table_text(item.claim, 220)}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## 6. 方法对比表",
+            "",
+            "| 论文 | 类型 | 主要贡献/方法 | 局限或需复核点 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for paper in selected_papers:
+        items = evidence_by_paper.get(paper.paper_id, [])
+        contribution = next((item.claim for item in items if item.category != "limitation"), "")
+        limitation = next((item.claim for item in items if item.category == "limitation"), "")
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    f"{refs.get(paper.paper_id, '')}. {_clip_table_text(paper.title, 70)}",
+                    paper.paper_type,
+                    _clip_table_text(contribution or paper.abstract, 150),
+                    _clip_table_text(limitation or "需要进一步阅读全文确认实验设置与适用边界。", 130),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 7. 数据集与评测指标",
+            "",
+            "当前版本不会凭空生成论文没有提供的数据集或数值指标，而是从标题、摘要和证据条目中抽取与 benchmark、dataset、evaluation、metric 相关的信息。若核心集合中缺少评测论文，系统会把它标记为覆盖缺口并触发补搜。",
+            "",
+            "| 证据 | 论文 | 评测相关线索 |",
+            "| --- | --- | --- |",
+        ]
+    )
+    benchmark_items = [
+        item
+        for item in evidence_items
+        if item.category == "experiment"
+        or any(token in f"{item.claim} {item.support_text}".lower() for token in ["benchmark", "dataset", "evaluation", "metric"])
+    ]
+    for item in benchmark_items[:10]:
+        paper_ref = refs.get(item.paper_id, item.paper_id)
+        lines.append(f"| `{item.evidence_id}` | {paper_ref} | {_clip_table_text(item.claim, 180)} |")
+    if not benchmark_items:
+        lines.append("| - | - | 未从摘要级证据中稳定抽取到评测数据集或指标，需要全文级解析补充。 |")
+
+    lines.extend(
+        [
+            "",
+            "## 8. 主要结论与证据",
+            "",
+            "| Claim ID | 结论 | 支持证据 | 置信提示 |",
+            "| --- | --- | --- | ---: |",
+        ]
+    )
+    if claim_graph:
+        for node in claim_graph:
+            evidence_ids = [
+                item["evidence_id"]
+                for item in node.get("supporting_evidence", []) + node.get("limitations", [])
+            ]
+            lines.append(
+                f"| `{node.get('claim_id', '')}` | {_clip_table_text(node.get('claim_text', ''), 220)} | "
+                f"{', '.join(f'`{item}`' for item in evidence_ids) or 'None'} | {float(node.get('confidence', 0.0)):.3f} |"
+            )
+    else:
+        for claim in claims:
+            evidence_ids = ", ".join(f"`{item}`" for item in claim.evidence_ids) or "None"
+            lines.append(f"| `{claim.claim_id}` | {_clip_table_text(claim.claim_text, 220)} | {evidence_ids} | - |")
+
+    lines.extend(
+        [
+            "",
+            "## 9. 争议、局限与研究空白",
+            "",
+        ]
+    )
+    if coverage_gaps:
+        lines.append("自动覆盖检测发现以下缺口，这些缺口不等同于最终学术结论，而是下一轮调研的优先入口：")
+        lines.append("")
+        for gap in coverage_gaps:
+            lines.append(f"- {gap.get('label', '')}: {gap.get('reason', '')}")
+    else:
+        lines.append("本轮核心文献在预设 Lens 上没有明显结构性缺口，但这只说明摘要级覆盖较均衡，不代表全文证据已经充分。")
+    lines.extend(
+        [
+            "",
+            "此外，当前系统仍受三类限制影响：第一，主要依赖开放元数据和摘要，缺少全文段落级证据；第二，不同数据库的引用数、出版状态和 DOI 完整度并不一致；第三，LLM 只参与主题修正、证据抽取或润色，最终报告仍需要 Citation Check 与人工复核共同约束。",
+            "",
+            "## 10. 未来方向",
+            "",
+            "1. 引入 PDF/HTML 全文解析，把 Evidence Ledger 从摘要级升级为段落级，并记录页码、章节和原文定位。",
+            "2. 增加学术数据库交叉验证，把 arXiv、OpenAlex、Semantic Scholar、Crossref 与可选网页检索形成互证。",
+            "3. 将 Evidence Matrix 扩展为可交互视图，允许用户按研究问题、年份、论文类型和证据类别过滤。",
+            "4. 对每个重要 claim 进行反证搜索，区分“已有共识”“存在争议”和“证据不足”。",
+            "5. 在对话式 Session 中支持局部重跑：只补搜 benchmark、安全或近三年论文，而不重做整个流程。",
+            "",
+            "## 11. 参考文献",
+            "",
+        ]
+    )
+    for index, paper in enumerate(academic_papers, start=1):
+        lines.append(_paper_citation(paper, index))
+    if web_sources:
+        lines.extend(["", "### 网页背景来源", ""])
+        for index, paper in enumerate(web_sources, start=1):
+            lines.append(f"[W{index}] {paper.title}. {paper.url}")
+
+    lines.extend(
+        [
+            "",
+            "## 12. 附录：Evidence Matrix 与调研过程",
+            "",
+            "### Evidence Matrix",
+            "",
+            "| 研究问题 | 论文 | 类型 | Evidence IDs |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in evidence_matrix[:40]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _clip_table_text(str(row.get("question", "")), 90),
+                    _clip_table_text(str(row.get("paper_title", "")), 80),
+                    str(row.get("paper_type", "")),
+                    ", ".join(f"`{item}`" for item in row.get("evidence_ids", [])) or "None",
+                ]
+            )
+            + " |"
+        )
+    if not evidence_matrix:
+        lines.append("| - | - | - | 未生成 Evidence Matrix。 |")
+
+    lines.extend(["", "### 补搜记录", ""])
+    if expansion_rounds:
+        for round_info in expansion_rounds:
+            lines.append(
+                f"- 第 {round_info.get('round', 1)} 轮补搜：新增候选 {round_info.get('added_candidates', 0)} 条；"
+                f"来源 `{round_info.get('actual_source', '')}`；原因：覆盖缺口补偿。"
+            )
+    else:
+        lines.append("- 本轮未触发补搜，或请求为离线模式。")
+
+    lines.extend(
+        [
+            "",
+            "### Citation Check",
+            "",
+            "| Check ID | Paper ID | 状态 | 信息 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for check in citation_checks:
+        lines.append(f"| `{check.check_id}` | `{check.paper_id}` | {check.status} | {_clip_table_text(check.message, 160)} |")
+
+    lines.extend(
+        [
+            "",
+            "### 可追溯产物",
+            "",
+            f"- 完整报告：`{state.get('report_path', '')}`",
+            f"- 快速总结：`{state.get('summary_path', '') or '未指定输出路径'}`",
+            f"- 调研过程记录：`{state.get('process_path', '') or '未指定输出路径'}`",
+            f"- LLM：`{state.get('llm_provider', 'off')}`；实际使用：`{str(state.get('llm_used', False)).lower()}`",
+        ]
+    )
+    fallback_reason = state.get("fallback_reason", "")
+    if fallback_reason:
+        lines.append(f"- 降级或部分失败说明：{_sanitize_secret_text(fallback_reason)}")
+    llm_fallback_reason = state.get("llm_fallback_reason", "")
+    if llm_fallback_reason:
+        lines.append(f"- LLM fallback：{_sanitize_secret_text(llm_fallback_reason)}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _citation_pass_rate(citation_checks: list[CitationCheck]) -> float:
     if not citation_checks:
         return 0.0
@@ -571,15 +942,20 @@ def render_process_markdown(state: dict[str, Any]) -> str:
 
     metrics = state.get("metrics", {})
     query_plan = state.get("query_plan", [])
+    query_tree = state.get("query_tree", {})
     searched_papers = state.get("searched_papers", [])
     selected_papers = state.get("selected_papers", [])
     evidence_items = state.get("evidence_items", [])
+    evidence_matrix = state.get("evidence_matrix", [])
     claims = state.get("claims", [])
     citation_checks = state.get("citation_checks", [])
     node_trace = state.get("node_trace", [])
     research_lens = state.get("research_lens", {})
     temporal_profile = state.get("temporal_profile", {})
     corpus_profile = state.get("corpus_profile", {})
+    source_results = state.get("source_results", {})
+    coverage_gaps = state.get("coverage_gaps", [])
+    expansion_rounds = state.get("expansion_rounds", [])
     topic_refinement = state.get("topic_refinement", {})
     revision_history = state.get("revision_history", [])
 
@@ -650,6 +1026,31 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             + " |"
         )
 
+    if query_tree.get("branches"):
+        lines.extend(
+            [
+                "",
+                "## Query Tree",
+                "",
+                "| Research Question | Subquery Count | Angles |",
+                "| --- | ---: | --- |",
+            ]
+        )
+        for branch in query_tree.get("branches", []):
+            subtopics = branch.get("subtopics", [])
+            angles = sorted({str(item.get("angle", "")) for item in subtopics if item.get("angle")})
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _clip_table_text(str(branch.get("question", "")), 140),
+                        str(len(subtopics)),
+                        ", ".join(angles) or "None",
+                    ]
+                )
+                + " |"
+            )
+
     lines.extend(["", "## Search Results", ""])
     lines.append(f"- Retrieved candidates before ranking: {len(searched_papers)}")
     if source_counts:
@@ -657,6 +1058,8 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             "- Candidate source counts: "
             + ", ".join(f"{source}={count}" for source, count in sorted(source_counts.items()))
         )
+    if source_results:
+        lines.append(f"- Source results: `{_sanitize_secret_text(json_like(source_results))}`")
     if temporal_profile:
         lines.extend(
             [
@@ -734,6 +1137,35 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             dimensions = ", ".join(profile.get("dimensions", []))
             lines.append(f"| `{profile.get('paper_id', '')}` | {dimensions} |")
 
+    lines.extend(["", "## Coverage Gaps and Expansion", ""])
+    if coverage_gaps:
+        lines.append("| Gap | Type | Suggested Angle | Reason |")
+        lines.append("| --- | --- | --- | --- |")
+        for gap in coverage_gaps:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _clip_table_text(str(gap.get("label", "")), 80),
+                        str(gap.get("gap_type", "")),
+                        str(gap.get("suggested_angle", "")),
+                        _clip_table_text(str(gap.get("reason", "")), 160),
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("- No remaining structural coverage gaps detected.")
+    if expansion_rounds:
+        lines.extend(["", "| Round | Added Candidates | Source | Query Count |", "| ---: | ---: | --- | ---: |"])
+        for round_info in expansion_rounds:
+            lines.append(
+                f"| {round_info.get('round', 1)} | {round_info.get('added_candidates', 0)} | "
+                f"{round_info.get('actual_source', '')} | {len(round_info.get('queries', []))} |"
+            )
+    else:
+        lines.append("- No expansion round was needed or executed.")
+
     lines.extend(
         [
             "",
@@ -757,6 +1189,29 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             )
             + " |"
         )
+
+    if evidence_matrix:
+        lines.extend(
+            [
+                "",
+                "## Evidence Matrix",
+                "",
+                "| Research Question | Paper ID | Evidence IDs |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for row in evidence_matrix[:40]:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _clip_table_text(str(row.get("question", "")), 130),
+                        f"`{row.get('paper_id', '')}`",
+                        ", ".join(f"`{item}`" for item in row.get("evidence_ids", [])) or "None",
+                    ]
+                )
+                + " |"
+            )
 
     lines.extend(
         [

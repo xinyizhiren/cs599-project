@@ -16,19 +16,23 @@ from typing import Any
 from .evaluation import evaluate_state, render_evaluation_markdown
 from .graph import NodeSpec, run_research_graph
 from .llm import LLMError, build_llm_client
-from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, ResearchResult
+from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem, ResearchResult
 from .offline_data import OFFLINE_PAPERS
-from .planner import normalize_topic, plan_queries, topic_terms
-from .report import render_process_markdown, render_report, render_summary_report
+from .planner import build_query_tree, normalize_topic, plan_queries, topic_terms
+from .report import render_full_report, render_process_markdown, render_report, render_summary_report
 from .session import save_session
 from .state import ResearchState
 from .tools import (
     ArxivSearchError,
     CrossrefSearchError,
+    OpenAlexSearchError,
     SemanticScholarSearchError,
+    TavilySearchError,
     search_arxiv,
     search_crossref,
+    search_openalex,
     search_semantic_scholar,
+    search_tavily,
 )
 
 
@@ -178,6 +182,19 @@ DEFAULT_CANDIDATE_MULTIPLIER = 8
 DEFAULT_FROM_YEAR = 2020
 DEFAULT_LLM_BATCH_CHARS = 9000
 LIVE_QUERY_PLAN_LIMIT = 6
+ACADEMIC_SOURCES = {"arxiv", "semantic_scholar", "crossref", "openalex"}
+LIVE_SOURCES = ACADEMIC_SOURCES | {"web"}
+VALID_SOURCES = {"offline"} | LIVE_SOURCES | {"hybrid", "mixed"}
+PAPER_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "survey": ("survey", "review", "taxonomy", "systematic literature", "sok"),
+    "benchmark": ("benchmark", "dataset", "evaluation", "metric", "leaderboard"),
+    "method": ("method", "algorithm", "approach", "framework", "model", "technique"),
+    "system": ("system", "architecture", "pipeline", "stack", "agentic", "multi-agent"),
+    "dataset": ("dataset", "corpus", "benchmarking", "testbed"),
+    "application": ("application", "case study", "domain", "medical", "legal", "finance", "education"),
+    "position": ("position", "perspective", "vision", "roadmap", "challenge", "open problem"),
+    "web_background": ("web search", "blog", "documentation", "report"),
+}
 
 
 def slugify(value: str, max_length: int = 48) -> str:
@@ -195,6 +212,47 @@ def is_rag_topic(topic: str) -> bool:
     return any(pattern in normalized for pattern in RAG_TOPIC_PATTERNS)
 
 
+def classify_paper_type(paper: PaperRecord) -> str:
+    if paper.source == "web":
+        return "web_background"
+    haystack = f"{paper.title} {paper.abstract}".lower()
+    for paper_type, keywords in PAPER_TYPE_KEYWORDS.items():
+        if paper_type == "web_background":
+            continue
+        if any(keyword in haystack for keyword in keywords):
+            return paper_type
+    return "unknown"
+
+
+def source_quality_bonus(source: str) -> float:
+    return {
+        "semantic_scholar": 1.2,
+        "openalex": 1.1,
+        "arxiv": 1.0,
+        "crossref": 0.9,
+        "offline": 0.4,
+        "web": -1.5,
+    }.get(source, 0.0)
+
+
+def paper_type_bonus(paper_type: str, topic: str) -> float:
+    bonuses = {
+        "survey": 3.0,
+        "benchmark": 2.8,
+        "method": 2.4,
+        "system": 2.0,
+        "dataset": 1.6,
+        "position": 1.2,
+        "application": -0.7,
+        "web_background": -3.0,
+        "unknown": 0.0,
+    }
+    bonus = bonuses.get(paper_type, 0.0)
+    if "application" in topic.lower() and paper_type == "application":
+        bonus = 1.5
+    return bonus
+
+
 def score_paper(paper: PaperRecord, terms: list[str], topic: str = "") -> float:
     title = paper.title.lower()
     abstract = paper.abstract.lower()
@@ -207,7 +265,14 @@ def score_paper(paper: PaperRecord, terms: list[str], topic: str = "") -> float:
             term_score += 1.0
     recency_score = max(0, paper.year - 2020) * 0.08
     citation_score = min(paper.citation_count, 100) / 100
-    score = term_score + recency_score + citation_score
+    inferred_type = paper.paper_type if paper.paper_type != "unknown" else classify_paper_type(paper)
+    score = (
+        term_score
+        + recency_score
+        + citation_score
+        + source_quality_bonus(paper.source)
+        + paper_type_bonus(inferred_type, topic)
+    )
 
     if is_rag_topic(topic):
         combined = f"{title} {abstract}"
@@ -353,6 +418,122 @@ def _search_crossref_queries(
     return collected, errors
 
 
+def _query_from_year(query_plan: list[Any]) -> int | None:
+    if not query_plan:
+        return None
+    filters = getattr(query_plan[0], "filters", {})
+    if isinstance(filters, dict):
+        return filters.get("from_year")
+    return None
+
+
+def _search_openalex_queries(
+    query_plan: list[Any],
+    limit: int,
+    from_year: int | None = None,
+) -> tuple[list[PaperRecord], list[str]]:
+    collected: list[PaperRecord] = []
+    errors: list[str] = []
+    for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
+        try:
+            collected.extend(search_openalex(query.query_text, limit=limit, from_year=from_year))
+        except OpenAlexSearchError as exc:
+            errors.append(str(exc))
+    return collected, errors
+
+
+def _search_tavily_queries(query_plan: list[Any], limit: int) -> tuple[list[PaperRecord], list[str]]:
+    collected: list[PaperRecord] = []
+    errors: list[str] = []
+    for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
+        try:
+            collected.extend(search_tavily(query.query_text, limit=max(1, min(limit, 10))))
+        except TavilySearchError as exc:
+            errors.append(str(exc))
+    return collected, errors
+
+
+def normalize_sources(sources: list[str], web_provider: str = "tavily") -> list[str]:
+    normalized_sources: list[str] = []
+    for source in sources:
+        normalized = source.replace("-", "_")
+        if normalized == "hybrid":
+            normalized_sources.extend(["arxiv", "semantic_scholar", "crossref", "openalex"])
+        elif normalized == "mixed":
+            normalized_sources.extend(["arxiv", "semantic_scholar", "crossref", "openalex"])
+            if web_provider != "off":
+                normalized_sources.append("web")
+        elif normalized in VALID_SOURCES:
+            if normalized != "web" or web_provider != "off":
+                normalized_sources.append(normalized)
+
+    if not normalized_sources:
+        normalized_sources = ["offline"]
+    return list(dict.fromkeys(normalized_sources))
+
+
+def search_live_source(
+    source: str,
+    query_plan: list[Any],
+    limit: int,
+) -> tuple[list[PaperRecord], list[str]]:
+    from_year = _query_from_year(query_plan)
+    if source == "arxiv":
+        return _search_arxiv_queries(query_plan, limit)
+    if source == "semantic_scholar":
+        return _search_semantic_scholar_queries(query_plan, limit)
+    if source == "crossref":
+        return _search_crossref_queries(query_plan, limit, from_year=from_year)
+    if source == "openalex":
+        return _search_openalex_queries(query_plan, limit, from_year=from_year)
+    if source == "web":
+        return _search_tavily_queries(query_plan, limit)
+    return [], [f"Source '{source}' is not implemented."]
+
+
+def actual_source_label(requested_sources: list[str], actual_sources: list[str]) -> str:
+    if not actual_sources:
+        return ""
+    actual_set = set(actual_sources)
+    academic_set = {"arxiv", "semantic_scholar", "crossref", "openalex"}
+    if actual_set == academic_set:
+        return "hybrid"
+    if "web" in actual_set and actual_set - {"web"}:
+        return "mixed"
+    return "+".join(actual_sources)
+
+
+def expand_source_label(label: str) -> list[str]:
+    if label == "hybrid":
+        return ["arxiv", "semantic_scholar", "crossref", "openalex"]
+    if label == "mixed":
+        return ["arxiv", "semantic_scholar", "crossref", "openalex", "web"]
+    return [
+        item
+        for item in label.split("+")
+        if item and item not in {"hybrid", "mixed", "offline"}
+    ]
+
+
+def build_source_results(
+    papers: list[PaperRecord],
+    actual_source: str,
+    fallback_reason: str | None = None,
+) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    paper_types: dict[str, int] = {}
+    for paper in papers:
+        counts[paper.source] = counts.get(paper.source, 0) + 1
+        paper_type = paper.paper_type if paper.paper_type != "unknown" else classify_paper_type(paper)
+        paper_types[paper_type] = paper_types.get(paper_type, 0) + 1
+    return {
+        "actual_source": actual_source,
+        "source_counts": dict(sorted(counts.items())),
+        "paper_type_counts": dict(sorted(paper_types.items())),
+        "fallback_reason": fallback_reason or "",
+    }
+
+
 def search_source(
     topic: str,
     query_plan: list[Any],
@@ -393,30 +574,47 @@ def search_source(
         fallback_reason = "; ".join(errors) or "Crossref returned no papers."
         return search_offline(topic, limit=limit), "offline", fallback_reason
 
+    if source == "openalex":
+        collected, errors = _search_openalex_queries(query_plan, limit, from_year=_query_from_year(query_plan))
+        unique = dedupe_papers(collected)
+        if unique:
+            return unique[:limit], "openalex", None
+        fallback_reason = "; ".join(errors) or "OpenAlex returned no papers."
+        return search_offline(topic, limit=limit), "offline", fallback_reason
+
+    if source == "web":
+        collected, errors = _search_tavily_queries(query_plan, limit)
+        unique = dedupe_papers(collected)
+        if unique:
+            return unique[:limit], "web", None
+        fallback_reason = "; ".join(errors) or "Web search returned no sources."
+        return search_offline(topic, limit=limit), "offline", fallback_reason
+
     if source == "hybrid":
         arxiv_papers, arxiv_errors = _search_arxiv_queries(query_plan, limit)
         semantic_papers, semantic_errors = _search_semantic_scholar_queries(query_plan, limit)
-        from_year = None
-        if query_plan:
-            filters = getattr(query_plan[0], "filters", {})
-            if isinstance(filters, dict):
-                from_year = filters.get("from_year")
         crossref_papers, crossref_errors = _search_crossref_queries(
             query_plan,
             limit,
-            from_year=from_year,
+            from_year=_query_from_year(query_plan),
+        )
+        openalex_papers, openalex_errors = _search_openalex_queries(
+            query_plan,
+            limit,
+            from_year=_query_from_year(query_plan),
         )
         unique = balanced_merge_papers(
             [
                 dedupe_papers(arxiv_papers),
                 dedupe_papers(semantic_papers),
                 dedupe_papers(crossref_papers),
+                dedupe_papers(openalex_papers),
             ],
             limit=limit,
         )
         if unique:
             return unique[:limit], "hybrid", None
-        errors = arxiv_errors + semantic_errors + crossref_errors
+        errors = arxiv_errors + semantic_errors + crossref_errors + openalex_errors
         fallback_reason = "; ".join(errors) or "Hybrid search returned no papers."
         return search_offline(topic, limit=limit), "offline", fallback_reason
 
@@ -429,21 +627,11 @@ def search_selected_sources(
     query_plan: list[Any],
     sources: list[str],
     limit: int,
+    web_provider: str = "tavily",
 ) -> tuple[list[PaperRecord], str, str | None]:
     """Search a user-selected source set and merge results fairly."""
 
-    normalized_sources: list[str] = []
-    for source in sources:
-        normalized = source.replace("-", "_")
-        if normalized == "hybrid":
-            normalized_sources.extend(["arxiv", "semantic_scholar", "crossref"])
-        elif normalized in {"offline", "arxiv", "semantic_scholar", "crossref"}:
-            normalized_sources.append(normalized)
-
-    if not normalized_sources:
-        normalized_sources = ["offline"]
-
-    normalized_sources = list(dict.fromkeys(normalized_sources))
+    normalized_sources = normalize_sources(sources, web_provider=web_provider)
     if len(normalized_sources) == 1:
         return search_source(topic, query_plan, normalized_sources[0], limit)
 
@@ -455,44 +643,18 @@ def search_selected_sources(
         source_groups.append(search_offline(topic, limit=limit))
         actual_sources.append("offline")
 
-    if "arxiv" in normalized_sources:
-        papers, source_errors = _search_arxiv_queries(query_plan, limit)
+    for source in [item for item in normalized_sources if item in LIVE_SOURCES]:
+        papers, source_errors = search_live_source(source, query_plan, limit)
         unique = dedupe_papers(papers)
         if unique:
             source_groups.append(unique)
-            actual_sources.append("arxiv")
+            actual_sources.append(source)
         else:
-            errors.extend(source_errors or ["arXiv returned no papers."])
-
-    if "semantic_scholar" in normalized_sources:
-        papers, source_errors = _search_semantic_scholar_queries(query_plan, limit)
-        unique = dedupe_papers(papers)
-        if unique:
-            source_groups.append(unique)
-            actual_sources.append("semantic_scholar")
-        else:
-            errors.extend(source_errors or ["Semantic Scholar returned no papers."])
-
-    if "crossref" in normalized_sources:
-        from_year = None
-        if query_plan:
-            filters = getattr(query_plan[0], "filters", {})
-            if isinstance(filters, dict):
-                from_year = filters.get("from_year")
-        papers, source_errors = _search_crossref_queries(query_plan, limit, from_year=from_year)
-        unique = dedupe_papers(papers)
-        if unique:
-            source_groups.append(unique)
-            actual_sources.append("crossref")
-        else:
-            errors.extend(source_errors or ["Crossref returned no papers."])
+            errors.extend(source_errors or [f"{source} returned no papers."])
 
     if source_groups:
         merged = balanced_merge_papers(source_groups, limit=limit)
-        live_sources = {"arxiv", "semantic_scholar", "crossref"}
-        actual_label = "+".join(actual_sources)
-        if set(normalized_sources) == live_sources and set(actual_sources) == live_sources:
-            actual_label = "hybrid"
+        actual_label = actual_source_label(normalized_sources, actual_sources)
         return merged, actual_label, "; ".join(errors) or None
 
     fallback_reason = "; ".join(errors) or "Selected live sources returned no papers."
@@ -500,7 +662,7 @@ def search_selected_sources(
 
 
 def rank_papers(papers: list[PaperRecord], topic: str, top_k: int) -> list[PaperRecord]:
-    return rank_all_papers(papers, topic)[:top_k]
+    return select_diverse_papers(rank_all_papers(papers, topic), top_k, topic)
 
 
 def rank_all_papers(papers: list[PaperRecord], topic: str) -> list[PaperRecord]:
@@ -515,9 +677,62 @@ def rank_all_papers(papers: list[PaperRecord], topic: str) -> list[PaperRecord]:
         if paper.paper_id in seen:
             continue
         seen.add(paper.paper_id)
+        paper.paper_type = classify_paper_type(paper)
         paper.score = score_paper(paper, terms, topic=topic)
         ranked.append(paper)
     return ranked
+
+
+def select_diverse_papers(
+    ranked_candidates: list[PaperRecord],
+    top_k: int,
+    topic: str,
+) -> list[PaperRecord]:
+    """Select a high-scoring Top-K while preserving report-useful paper types."""
+
+    if top_k <= 0:
+        return []
+    topic_lower = topic.lower()
+    selected: list[PaperRecord] = []
+    selected_ids: set[str] = set()
+    required_types = ["survey", "method", "benchmark", "position"]
+    if "application" in topic_lower:
+        required_types.append("application")
+
+    for paper_type in required_types:
+        for paper in ranked_candidates:
+            if paper.paper_id in selected_ids:
+                continue
+            if paper.paper_type == paper_type:
+                selected.append(paper)
+                selected_ids.add(paper.paper_id)
+                break
+        if len(selected) >= top_k:
+            return selected[:top_k]
+
+    application_limit = top_k if "application" in topic_lower else max(1, top_k // 4)
+    for paper in ranked_candidates:
+        if paper.paper_id in selected_ids:
+            continue
+        if paper.paper_type == "web_background":
+            continue
+        if paper.paper_type == "application":
+            current_app_count = sum(1 for item in selected if item.paper_type == "application")
+            if current_app_count >= application_limit:
+                continue
+        selected.append(paper)
+        selected_ids.add(paper.paper_id)
+        if len(selected) >= top_k:
+            break
+
+    if len(selected) < top_k:
+        for paper in ranked_candidates:
+            if paper.paper_id not in selected_ids:
+                selected.append(paper)
+                selected_ids.add(paper.paper_id)
+            if len(selected) >= top_k:
+                break
+    return selected[:top_k]
 
 
 def build_temporal_profile(papers: list[PaperRecord]) -> dict[str, Any]:
@@ -597,6 +812,14 @@ def build_research_lens(topic: str, papers: list[PaperRecord]) -> dict[str, Any]
     }
 
 
+def build_paper_type_counts(papers: list[PaperRecord]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for paper in papers:
+        paper_type = paper.paper_type if paper.paper_type != "unknown" else classify_paper_type(paper)
+        counts[paper_type] = counts.get(paper_type, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def build_corpus_profile(
     topic: str,
     candidate_papers: list[PaperRecord],
@@ -608,6 +831,9 @@ def build_corpus_profile(
         "selected_count": len(selected_papers),
         "from_year": normalize_from_year(from_year),
         "temporal_profile": build_temporal_profile(candidate_papers),
+        "source_counts": build_source_results(candidate_papers, "", "").get("source_counts", {}),
+        "paper_type_counts": build_paper_type_counts(candidate_papers),
+        "selected_paper_type_counts": build_paper_type_counts(selected_papers),
         "candidate_lens": build_research_lens(topic, candidate_papers),
         "selected_lens": build_research_lens(topic, selected_papers),
         "compression_strategy": [
@@ -618,6 +844,221 @@ def build_corpus_profile(
             "Keep claim-evidence-citation links as the auditable final surface.",
         ],
     }
+
+
+def detect_coverage_gaps(
+    topic: str,
+    selected_papers: list[PaperRecord],
+    research_lens: dict[str, Any],
+    temporal_profile: dict[str, Any],
+) -> list[dict[str, Any]]:
+    gaps: list[dict[str, Any]] = []
+    for dimension in research_lens.get("missing_dimensions", [])[:4]:
+        gaps.append(
+            {
+                "gap_id": f"lens:{dimension}",
+                "gap_type": "lens_dimension",
+                "label": dimension,
+                "reason": f"Selected papers do not cover {dimension}.",
+                "suggested_angle": _angle_for_gap(dimension),
+            }
+        )
+
+    type_counts = build_paper_type_counts(selected_papers)
+    for paper_type in ("survey", "method", "benchmark"):
+        if type_counts.get(paper_type, 0) == 0:
+            gaps.append(
+                {
+                    "gap_id": f"paper_type:{paper_type}",
+                    "gap_type": "paper_type",
+                    "label": paper_type,
+                    "reason": f"No selected {paper_type} paper is available.",
+                    "suggested_angle": paper_type,
+                }
+            )
+
+    if is_rag_topic(topic) and type_counts.get("application", 0) > max(1, len(selected_papers) // 3):
+        gaps.append(
+            {
+                "gap_id": "balance:too_many_applications",
+                "gap_type": "balance",
+                "label": "application_overweight",
+                "reason": "Application papers dominate the core set.",
+                "suggested_angle": "method",
+            }
+        )
+
+    if selected_papers and float(temporal_profile.get("last_5_year_ratio", 0.0)) < 0.35:
+        gaps.append(
+            {
+                "gap_id": "temporal:recent",
+                "gap_type": "temporal",
+                "label": "recent",
+                "reason": "Recent papers are under-represented in the candidate pool.",
+                "suggested_angle": "recent",
+            }
+        )
+    return gaps
+
+
+def _angle_for_gap(label: str) -> str:
+    mapping = {
+        "Survey & Taxonomy": "survey",
+        "Retrieval & Indexing": "method",
+        "Generation & Grounding": "method",
+        "Evaluation & Benchmarks": "benchmark",
+        "Security & Robustness": "security",
+        "Graph & Structured RAG": "method",
+        "Domain Applications": "application",
+    }
+    return mapping.get(label, "method")
+
+
+def make_expansion_queries(
+    topic: str,
+    coverage_gaps: list[dict[str, Any]],
+    from_year: int | None,
+    max_queries: int = 3,
+) -> list[QueryItem]:
+    queries: list[QueryItem] = []
+    seen: set[str] = set()
+    gap_terms = {
+        "survey": "survey taxonomy review",
+        "method": "methods architecture framework",
+        "benchmark": "benchmark evaluation dataset metrics",
+        "security": "security robustness attack defense",
+        "application": "applications case study domain",
+        "recent": "2024 2025 2026 recent advances",
+    }
+    for index, gap in enumerate(coverage_gaps, start=1):
+        angle = str(gap.get("suggested_angle", "method"))
+        if angle in seen:
+            continue
+        seen.add(angle)
+        query_text = f"{topic} {gap_terms.get(angle, angle)}"
+        queries.append(
+            QueryItem(
+                query_id=f"expansion-{index}",
+                query_text=query_text,
+                source="expansion",
+                filters={
+                    "angle": angle,
+                    "distance": "gap_recovery",
+                    "from_year": from_year,
+                    "gap_id": gap.get("gap_id", ""),
+                },
+            )
+        )
+        if len(queries) >= max_queries:
+            break
+    return queries
+
+
+def question_tokens(question: str) -> set[str]:
+    stopwords = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "how",
+        "what",
+        "why",
+        "does",
+        "can",
+        "of",
+        "in",
+        "to",
+        "a",
+        "an",
+        "研究",
+        "问题",
+        "如何",
+        "什么",
+    }
+    return {
+        token
+        for token in re.findall(r"[A-Za-z0-9\u4e00-\u9fff]+", question.lower())
+        if token not in stopwords and len(token) > 1
+    }
+
+
+def build_evidence_matrix(
+    research_questions: list[str],
+    selected_papers: list[PaperRecord],
+    evidence_items: list[EvidenceItem],
+) -> list[dict[str, Any]]:
+    if not research_questions:
+        research_questions = ["What are the main methods, evidence, limitations, and future directions?"]
+    evidence_by_paper: dict[str, list[EvidenceItem]] = {}
+    for item in evidence_items:
+        evidence_by_paper.setdefault(item.paper_id, []).append(item)
+
+    rows: list[dict[str, Any]] = []
+    for question_index, question in enumerate(research_questions, start=1):
+        tokens = question_tokens(question)
+        for paper in selected_papers:
+            haystack = f"{paper.title} {paper.abstract}".lower()
+            overlap = sum(1 for token in tokens if token in haystack)
+            paper_evidence = evidence_by_paper.get(paper.paper_id, [])
+            if overlap == 0 and question_index > 1:
+                continue
+            rows.append(
+                {
+                    "question_id": f"rq{question_index}",
+                    "question": question,
+                    "paper_id": paper.paper_id,
+                    "paper_title": paper.title,
+                    "paper_type": paper.paper_type,
+                    "evidence_ids": [item.evidence_id for item in paper_evidence[:3]],
+                    "evidence_types": sorted({item.category for item in paper_evidence[:3]}),
+                    "relevance_hint": overlap,
+                }
+            )
+    return rows
+
+
+def build_claim_graph(
+    claims: list[ClaimRecord],
+    evidence_items: list[EvidenceItem],
+    selected_papers: list[PaperRecord],
+) -> list[dict[str, Any]]:
+    evidence_by_id = {item.evidence_id: item for item in evidence_items}
+    paper_by_id = {paper.paper_id: paper for paper in selected_papers}
+    graph: list[dict[str, Any]] = []
+    for claim in claims:
+        supporting = []
+        limitations = []
+        for evidence_id in claim.evidence_ids:
+            evidence = evidence_by_id.get(evidence_id)
+            if not evidence:
+                continue
+            paper = paper_by_id.get(evidence.paper_id)
+            node = {
+                "evidence_id": evidence.evidence_id,
+                "paper_id": evidence.paper_id,
+                "paper_title": paper.title if paper else "",
+                "category": evidence.category,
+                "confidence": evidence.confidence,
+            }
+            if evidence.category in {"limitation", "future_work"}:
+                limitations.append(node)
+            else:
+                supporting.append(node)
+        graph.append(
+            {
+                "claim_id": claim.claim_id,
+                "claim_type": claim.claim_type,
+                "claim_text": claim.claim_text,
+                "supporting_evidence": supporting,
+                "limitations": limitations,
+                "confidence": round(
+                    sum(item["confidence"] for item in supporting + limitations)
+                    / max(len(supporting) + len(limitations), 1),
+                    3,
+                ),
+            }
+        )
+    return graph
 
 
 def extract_evidence(papers: list[PaperRecord]) -> list[EvidenceItem]:
@@ -1015,6 +1456,17 @@ def node_plan_queries(state: ResearchState) -> dict[str, Any]:
         adjacent_topics=refinement.get("adjacent_topics", []),
         query_hints=refinement.get("query_hints", []),
         from_year=int(state.get("from_year") or DEFAULT_FROM_YEAR),
+        max_queries=max(6, int(state.get("depth", 2)) * int(state.get("breadth", 4)) + 2),
+    )
+    query_tree = build_query_tree(
+        effective_topic,
+        source=requested_source,
+        research_questions=refinement.get("research_questions", []),
+        adjacent_topics=refinement.get("adjacent_topics", []),
+        query_hints=refinement.get("query_hints", []),
+        from_year=int(state.get("from_year") or DEFAULT_FROM_YEAR),
+        depth=int(state.get("depth", 2)),
+        breadth=int(state.get("breadth", 4)),
     )
     return {
         "effective_topic": effective_topic,
@@ -1023,6 +1475,12 @@ def node_plan_queries(state: ResearchState) -> dict[str, Any]:
         "topic_refinement_used": refinement_used,
         "topic_refinement_fallback_reason": refinement_fallback_reason,
         "query_plan": query_plan,
+        "query_tree": query_tree,
+        "subtopics": [
+            subtopic
+            for branch in query_tree.get("branches", [])
+            for subtopic in branch.get("subtopics", [])
+        ],
     }
 
 
@@ -1032,6 +1490,7 @@ def node_search_papers(state: ResearchState) -> dict[str, Any]:
         query_plan=state["query_plan"],
         sources=state.get("selected_sources", [state["requested_source"]]),
         limit=int(state.get("candidate_limit", max(int(state["top_k"]) * 4, 10))),
+        web_provider=state.get("web_provider", "tavily"),
     )
     searched_papers = filter_papers_by_year(raw_papers, state.get("from_year"))
     if raw_papers and not searched_papers:
@@ -1046,23 +1505,116 @@ def node_search_papers(state: ResearchState) -> dict[str, Any]:
         "actual_source": actual_source,
         "fallback_reason": fallback_reason or "",
         "temporal_profile": build_temporal_profile(searched_papers),
+        "source_results": build_source_results(searched_papers, actual_source, fallback_reason),
     }
 
 
 def node_rank_papers(state: ResearchState) -> dict[str, Any]:
     effective_topic = state.get("effective_topic", state["topic"])
     ranked_candidates = rank_all_papers(state["searched_papers"], effective_topic)
-    selected_papers = ranked_candidates[: int(state["top_k"])]
+    selected_papers = select_diverse_papers(ranked_candidates, int(state["top_k"]), effective_topic)
+    research_lens = build_research_lens(effective_topic, selected_papers)
+    corpus_profile = build_corpus_profile(
+        effective_topic,
+        ranked_candidates,
+        selected_papers,
+        state.get("from_year"),
+    )
+    coverage_gaps = detect_coverage_gaps(
+        effective_topic,
+        selected_papers,
+        research_lens,
+        corpus_profile.get("temporal_profile", {}),
+    )
     return {
         "ranked_candidates": ranked_candidates,
         "selected_papers": selected_papers,
-        "research_lens": build_research_lens(effective_topic, selected_papers),
-        "corpus_profile": build_corpus_profile(
-            effective_topic,
-            ranked_candidates,
-            selected_papers,
-            state.get("from_year"),
+        "research_lens": research_lens,
+        "corpus_profile": corpus_profile,
+        "coverage_gaps": coverage_gaps,
+    }
+
+
+def node_expand_search(state: ResearchState) -> dict[str, Any]:
+    if state.get("requested_source") == "offline" or not state.get("coverage_gaps"):
+        return {"expansion_rounds": []}
+
+    effective_topic = state.get("effective_topic", state["topic"])
+    expansion_queries = make_expansion_queries(
+        effective_topic,
+        state.get("coverage_gaps", []),
+        state.get("from_year"),
+    )
+    if not expansion_queries:
+        return {"expansion_rounds": []}
+
+    expansion_limit = max(20, min(int(state.get("candidate_limit", 80)), 60))
+    expanded_papers, actual_source, fallback_reason = search_selected_sources(
+        topic=effective_topic,
+        query_plan=expansion_queries,
+        sources=state.get("selected_sources", [state["requested_source"]]),
+        limit=expansion_limit,
+        web_provider=state.get("web_provider", "tavily"),
+    )
+    if actual_source == "offline" and not expanded_papers:
+        return {
+            "expansion_rounds": [
+                {
+                    "round": 1,
+                    "queries": [query.to_dict() for query in expansion_queries],
+                    "actual_source": actual_source,
+                    "fallback_reason": fallback_reason or "No expansion results.",
+                    "added_candidates": 0,
+                }
+            ]
+        }
+
+    searched_papers = filter_papers_by_year(
+        dedupe_papers(list(state.get("searched_papers", [])) + expanded_papers),
+        state.get("from_year"),
+    )
+    ranked_candidates = rank_all_papers(searched_papers, effective_topic)
+    selected_papers = select_diverse_papers(ranked_candidates, int(state["top_k"]), effective_topic)
+    research_lens = build_research_lens(effective_topic, selected_papers)
+    corpus_profile = build_corpus_profile(
+        effective_topic,
+        ranked_candidates,
+        selected_papers,
+        state.get("from_year"),
+    )
+    coverage_gaps = detect_coverage_gaps(
+        effective_topic,
+        selected_papers,
+        research_lens,
+        corpus_profile.get("temporal_profile", {}),
+    )
+    actual_sources = expand_source_label(str(state.get("actual_source", "")))
+    actual_sources.extend(expand_source_label(actual_source))
+    actual_label = actual_source_label(state.get("selected_sources", []), list(dict.fromkeys(actual_sources)))
+    return {
+        "query_plan": list(state.get("query_plan", [])) + expansion_queries,
+        "searched_papers": searched_papers,
+        "ranked_candidates": ranked_candidates,
+        "selected_papers": selected_papers,
+        "research_lens": research_lens,
+        "corpus_profile": corpus_profile,
+        "coverage_gaps": coverage_gaps,
+        "temporal_profile": build_temporal_profile(searched_papers),
+        "actual_source": actual_label or state.get("actual_source", actual_source),
+        "fallback_reason": "; ".join(
+            item for item in [state.get("fallback_reason", ""), fallback_reason or ""] if item
         ),
+        "source_results": build_source_results(searched_papers, actual_label, fallback_reason),
+        "expansion_rounds": [
+            {
+                "round": 1,
+                "queries": [query.to_dict() for query in expansion_queries],
+                "actual_source": actual_source,
+                "fallback_reason": fallback_reason or "",
+                "added_candidates": len(expanded_papers),
+                "remaining_gaps": coverage_gaps,
+            }
+        ],
     }
 
 
@@ -1096,11 +1648,23 @@ def node_extract_evidence(state: ResearchState) -> dict[str, Any]:
 
 
 def node_synthesize_claims(state: ResearchState) -> dict[str, Any]:
+    claims = synthesize_claims(
+        state.get("effective_topic", state["topic"]),
+        state["evidence_items"],
+    )
+    research_questions = [
+        branch.get("question", "")
+        for branch in state.get("query_tree", {}).get("branches", [])
+        if branch.get("question")
+    ]
     return {
-        "claims": synthesize_claims(
-            state.get("effective_topic", state["topic"]),
+        "claims": claims,
+        "evidence_matrix": build_evidence_matrix(
+            research_questions,
+            state["selected_papers"],
             state["evidence_items"],
-        )
+        ),
+        "claim_graph": build_claim_graph(claims, state["evidence_items"], state["selected_papers"]),
     }
 
 
@@ -1110,22 +1674,25 @@ def node_check_citations(state: ResearchState) -> dict[str, Any]:
 
 def node_write_report(state: ResearchState) -> dict[str, Any]:
     report_topic = state.get("effective_topic", state["topic"])
-    report_markdown = render_report(
-        topic=report_topic,
-        selected_papers=state["selected_papers"],
-        evidence_items=state["evidence_items"],
-        claims=state["claims"],
-        citation_checks=state["citation_checks"],
-        query_plan=state.get("query_plan", []),
-        actual_source=state.get("actual_source", ""),
-        fallback_reason=state.get("fallback_reason", ""),
-        llm_provider=state.get("llm_provider", "off"),
-        llm_used=bool(state.get("llm_used", False)),
-        research_lens=state.get("research_lens", {}),
-    )
+    if state.get("report_style", "full") == "full":
+        report_markdown = render_full_report(state)
+    else:
+        report_markdown = render_report(
+            topic=report_topic,
+            selected_papers=state["selected_papers"],
+            evidence_items=state["evidence_items"],
+            claims=state["claims"],
+            citation_checks=state["citation_checks"],
+            query_plan=state.get("query_plan", []),
+            actual_source=state.get("actual_source", ""),
+            fallback_reason=state.get("fallback_reason", ""),
+            llm_provider=state.get("llm_provider", "off"),
+            llm_used=bool(state.get("llm_used", False)),
+            research_lens=state.get("research_lens", {}),
+        )
     llm_used = bool(state.get("llm_used", False))
     llm_fallback_reason = state.get("llm_fallback_reason", "")
-    if state.get("llm_provider") == "deepseek":
+    if state.get("llm_provider") == "deepseek" and state.get("report_style", "full") != "full":
         try:
             report_markdown = polish_background_with_llm(
                 report_topic,
@@ -1159,6 +1726,7 @@ RESEARCH_NODES: list[NodeSpec] = [
     ("plan_queries", node_plan_queries),
     ("search_papers", node_search_papers),
     ("rank_papers", node_rank_papers),
+    ("expand_search", node_expand_search),
     ("extract_evidence", node_extract_evidence),
     ("synthesize_claims", node_synthesize_claims),
     ("check_citations", node_check_citations),
@@ -1182,6 +1750,10 @@ def run_research(
     max_candidates: int | None = None,
     from_year: int | None = DEFAULT_FROM_YEAR,
     refine_topic: bool = False,
+    depth: int = 2,
+    breadth: int = 4,
+    report_style: str = "full",
+    web_provider: str = "tavily",
 ) -> ResearchResult:
     if not topic.strip():
         raise ValueError("Research topic cannot be empty.")
@@ -1191,11 +1763,7 @@ def run_research(
     task_id = make_task_id(topic)
     created_at = datetime.now(timezone.utc).isoformat()
     requested_source = "offline" if offline else source.replace("-", "_")
-    selected_sources = (
-        ["arxiv", "semantic_scholar", "crossref"]
-        if requested_source == "hybrid"
-        else [requested_source]
-    )
+    selected_sources = normalize_sources([requested_source], web_provider=web_provider)
     candidate_limit = candidate_limit_for(top_k, candidate_multiplier, max_candidates)
     normalized_from_year = normalize_from_year(from_year)
     initial_state: ResearchState = {
@@ -1207,9 +1775,13 @@ def run_research(
         "top_k": top_k,
         "candidate_multiplier": max(1, candidate_multiplier),
         "candidate_limit": candidate_limit,
+        "depth": max(1, depth),
+        "breadth": max(1, breadth),
         "from_year": normalized_from_year,
         "requested_source": requested_source,
         "selected_sources": selected_sources,
+        "web_provider": web_provider,
+        "report_style": report_style,
         "output_path": output,
         "summary_output_path": summary_output,
         "process_output_path": process_output,
@@ -1296,14 +1868,21 @@ def run_research(
                 ),
                 "graph_runtime": final_state.get("graph_runtime", ""),
                 "query_plan": _serialize(final_state.get("query_plan", [])),
+                "query_tree": _serialize(final_state.get("query_tree", {})),
+                "subtopics": _serialize(final_state.get("subtopics", [])),
+                "source_results": _serialize(final_state.get("source_results", {})),
                 "searched_papers": _serialize(final_state.get("searched_papers", [])),
                 "ranked_candidates": _serialize(final_state.get("ranked_candidates", [])),
                 "selected_papers": _serialize(final_state.get("selected_papers", [])),
                 "research_lens": _serialize(final_state.get("research_lens", {})),
                 "corpus_profile": _serialize(final_state.get("corpus_profile", {})),
+                "coverage_gaps": _serialize(final_state.get("coverage_gaps", [])),
+                "expansion_rounds": _serialize(final_state.get("expansion_rounds", [])),
                 "temporal_profile": _serialize(final_state.get("temporal_profile", {})),
                 "evidence_items": _serialize(final_state.get("evidence_items", [])),
+                "evidence_matrix": _serialize(final_state.get("evidence_matrix", [])),
                 "claims": _serialize(final_state.get("claims", [])),
+                "claim_graph": _serialize(final_state.get("claim_graph", [])),
                 "citation_checks": _serialize(final_state.get("citation_checks", [])),
                 "node_trace": _serialize(final_state.get("node_trace", [])),
                 "errors": _serialize(final_state.get("errors", [])),

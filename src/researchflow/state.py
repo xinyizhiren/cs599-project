@@ -20,9 +20,13 @@ class ResearchState(TypedDict, total=False):
     top_k: int
     candidate_multiplier: int
     candidate_limit: int
+    depth: int
+    breadth: int
     from_year: int | None
     requested_source: str
     selected_sources: list[str]
+    web_provider: str
+    report_style: str
     actual_source: str
     fallback_reason: str
     output_path: str | None
@@ -35,13 +39,20 @@ class ResearchState(TypedDict, total=False):
     llm_used: bool
     llm_fallback_reason: str
     query_plan: list[QueryItem]
+    query_tree: dict[str, Any]
+    subtopics: list[dict[str, Any]]
+    source_results: dict[str, Any]
     searched_papers: list[PaperRecord]
     ranked_candidates: list[PaperRecord]
     selected_papers: list[PaperRecord]
     temporal_profile: dict[str, Any]
     research_lens: dict[str, Any]
     corpus_profile: dict[str, Any]
+    coverage_gaps: list[dict[str, Any]]
+    expansion_rounds: list[dict[str, Any]]
     evidence_items: list[EvidenceItem]
+    evidence_matrix: list[dict[str, Any]]
+    claim_graph: list[dict[str, Any]]
     llm_chunk_count: int
     claims: list[ClaimRecord]
     citation_checks: list[CitationCheck]

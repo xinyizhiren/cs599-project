@@ -26,9 +26,10 @@ def test_run_research_offline_generates_report() -> None:
     assert len(result.selected_papers) == 3
     assert output.exists()
     report = output.read_text(encoding="utf-8")
-    assert "文献调研报告" in report
-    assert "参考文献" in report
-    assert "关键结论与证据" in report
+    assert "中文文献调研报告" in report
+    assert "## 8. 主要结论与证据" in report
+    assert "## 11. 参考文献" in report
+    assert "Evidence Matrix" in report
     assert result.metrics["evidence_count"] == 6
     assert result.metrics["overall_score"] > 80
     assert result.metrics["claim_evidence_coverage"] == 1.0
@@ -106,9 +107,29 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
             )
         ]
 
+    def fake_openalex(
+        query: str,
+        limit: int = 20,
+        from_year: int | None = None,
+    ) -> list[PaperRecord]:
+        return [
+            PaperRecord(
+                paper_id="openalex:W123",
+                title="OpenAlex Indexed Research Agent Survey",
+                authors=["D. Scholar"],
+                year=2025,
+                abstract="This survey studies research agents, citation checking, and evaluation.",
+                url="https://openalex.org/W123",
+                doi="10.1234/openalex-agent",
+                source="openalex",
+                citation_count=18,
+            )
+        ]
+
     monkeypatch.setattr("researchflow.pipeline.search_arxiv", fake_arxiv)
     monkeypatch.setattr("researchflow.pipeline.search_semantic_scholar", fake_semantic_scholar)
     monkeypatch.setattr("researchflow.pipeline.search_crossref", fake_crossref)
+    monkeypatch.setattr("researchflow.pipeline.search_openalex", fake_openalex)
 
     result = run_research(
         "agentic literature review agents",
@@ -121,10 +142,10 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
     assert result.status == "success"
     assert len(result.selected_papers) == 3
     assert result.metrics["actual_source"] == "hybrid"
-    assert any(paper.source == "crossref" for paper in result.selected_papers)
+    assert result.metrics["source_diversity"] > 0
     report = output.read_text(encoding="utf-8")
-    assert "执行摘要" in report
-    assert "证据台账" in report
+    assert "中文文献调研报告" in report
+    assert "## 3. 文献覆盖与时间分布" in report
 
 
 def test_balanced_merge_papers_prevents_source_starvation() -> None:

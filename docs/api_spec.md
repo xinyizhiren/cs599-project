@@ -24,7 +24,12 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --candidate-multiplier | int | 否 | 8 | 候选池规模倍数，候选池约为 top_k * multiplier |
 | --max-candidates | int | 否 | 无 | 显式候选池上限，优先级高于 candidate multiplier |
 | --from-year | int | 否 | 2020 | 候选论文起始年份；设为 0 可关闭年份过滤 |
-| --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、crossref、hybrid |
+| --source | string | 否 | offline | 数据源，支持 offline、arxiv、semantic_scholar、crossref、openalex、web、hybrid、mixed |
+| --min-year | int | 否 | 2020 | `--from-year` 的别名 |
+| --depth | int | 否 | 2 | Query tree 深度，控制 Deep Research 风格递归规划 |
+| --breadth | int | 否 | 4 | 每层研究问题/子查询宽度 |
+| --report-style | string | 否 | full | 报告风格，支持 full、summary、course；full 默认输出完整中文调研报告 |
+| --web-provider | string | 否 | tavily | Web 检索提供方，支持 off、tavily；无 `TAVILY_API_KEY` 时自动跳过 |
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
 | --summary-output | path | 否 | 无 | 最终综合总结 Markdown 输出路径 |
 | --process-output | path | 否 | 无 | 调研过程记录 Markdown 输出路径 |
@@ -117,6 +122,8 @@ Content-Type: application/json
 | DEEPSEEK_API_KEY | 否 | DeepSeek API Key |
 | OPENAI_API_KEY | 否 | OpenAI API Key |
 | SEMANTIC_SCHOLAR_API_KEY | 否 | Semantic Scholar API Key，可提高限额 |
+| TAVILY_API_KEY | 否 | Tavily Web 检索 Key；未配置时 Web 源自动跳过 |
+| OPENALEX_MAILTO | 否 | OpenAlex polite pool 邮箱标识 |
 | RESEARCHFLOW_MODEL | 否 | 默认模型名称 |
 | RESEARCHFLOW_LLM_TIMEOUT | 否 | LLM 请求超时时间，默认 30 秒 |
 | RESEARCHFLOW_CACHE_DIR | 否 | 缓存目录 |
@@ -147,6 +154,10 @@ def run_research(
     max_candidates: int | None = None,
     from_year: int | None = 2020,
     refine_topic: bool = False,
+    depth: int = 2,
+    breadth: int = 4,
+    report_style: str = "full",
+    web_provider: str = "tavily",
 ) -> ResearchResult:
     ...
 ```
@@ -226,7 +237,8 @@ def search_papers(query: QueryItem, limit: int = 20) -> list[PaperRecord]:
     "url": "https://arxiv.org/abs/2401.00001",
     "doi": null,
     "arxiv_id": "2401.00001",
-    "source": "arxiv"
+    "source": "arxiv",
+    "paper_type": "survey|benchmark|method|system|dataset|application|position|web_background|unknown"
   }
 ]
 ```
@@ -302,21 +314,20 @@ def write_report(
 输出 Markdown 结构：
 
 ```markdown
-# 文献调研报告：{topic}
+# {topic}：中文文献调研报告
 
-## 执行摘要
-## 检索方法与范围
-## 1. 研究背景
-## 2. 核心文献
-## 3. 关键结论与证据
-## RAG 研究透镜
-## 4. 方法与主题分类
-## 证据台账
-## 5. 对比分析
-## 6. 研究空白
-## 7. 自动化调研局限
-## 引用校验
-## 参考文献
+## 1. 摘要
+## 2. 调研问题与检索策略
+## 3. 文献覆盖与时间分布
+## 4. 研究脉络与方法分类
+## 5. 核心论文精读
+## 6. 方法对比表
+## 7. 数据集与评测指标
+## 8. 主要结论与证据
+## 9. 争议、局限与研究空白
+## 10. 未来方向
+## 11. 参考文献
+## 12. 附录：Evidence Matrix 与调研过程
 ```
 
 ## 6. 数据 Schema
@@ -334,7 +345,8 @@ def write_report(
   "doi": "string|null",
   "arxiv_id": "string|null",
   "source": "string",
-  "citation_count": 0
+  "citation_count": 0,
+  "paper_type": "survey|benchmark|method|system|dataset|application|position|web_background|unknown"
 }
 ```
 
@@ -400,6 +412,11 @@ def write_report(
 | llm_used | 是否实际使用 LLM 输出 |
 | llm_fallback_reason | LLM 降级原因 |
 | llm_chunk_count | LLM 证据抽取批次数，用于观察上下文窗口分批策略 |
+| source_diversity | 候选来源多样性 |
+| paper_type_diversity | 核心论文类型多样性 |
+| evidence_matrix_coverage | Evidence Matrix 覆盖核心论文比例 |
+| coverage_gap_count | 覆盖检测剩余缺口数 |
+| query_gap_recovery | 覆盖缺口补搜恢复指标 |
 | refine_topic | 是否启用模糊主题修正 |
 | effective_topic | 实际用于检索和排序的主题 |
 | topic_refinement_used | 是否成功使用 LLM 修正主题 |
@@ -417,7 +434,7 @@ def write_report(
 
 ## 9. 兼容性计划
 
-MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture、arXiv XML 解析/检索、Semantic Scholar JSON 解析/检索、Crossref DOI 元数据检索和 hybrid 多源检索；OpenAlex 和 Crossref 深度校验作为后续工具接入。后续可将 Tool 层暴露为 MCP server：
+MVP 使用 CLI 和内部 Python API。当前已实现 offline fixture、arXiv XML 解析/检索、Semantic Scholar JSON 解析/检索、Crossref DOI 元数据检索、OpenAlex Works 检索、可选 Tavily Web 检索，以及 hybrid/mixed 多源检索。后续可将 Tool 层暴露为 MCP server：
 
 | MCP Tool | 对应内部函数 |
 | --- | --- |

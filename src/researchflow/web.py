@@ -31,6 +31,7 @@ from .pipeline import (
     candidate_limit_for,
     make_task_id,
     normalize_from_year,
+    normalize_sources,
     render_process_markdown,
     render_summary_report,
     slugify,
@@ -42,7 +43,7 @@ from .state import ResearchState
 
 
 StepStatus = str
-ALLOWED_SOURCES = {"offline", "arxiv", "semantic_scholar", "crossref"}
+ALLOWED_SOURCES = {"offline", "arxiv", "semantic_scholar", "crossref", "openalex", "web", "hybrid", "mixed"}
 DOWNLOAD_KINDS = {
     "report": ("report_markdown", "report.md"),
     "summary": ("summary_markdown", "summary.md"),
@@ -74,6 +75,12 @@ STEP_DEFINITIONS: list[dict[str, str]] = [
         "name": "Rank Evidence",
         "label": "排序筛选",
         "description": "Score, deduplicate, and choose the core papers.",
+    },
+    {
+        "id": "expand_search",
+        "name": "Expand Search",
+        "label": "覆盖补搜",
+        "description": "Recover structural coverage gaps with one focused expansion search.",
     },
     {
         "id": "extract_evidence",
@@ -137,32 +144,49 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
     if not topic:
         raise ValueError("Research topic cannot be empty.")
 
+    web_provider = str(payload.get("web_provider", "tavily")).strip()
+    if web_provider not in {"off", "tavily"}:
+        web_provider = "tavily"
+
     raw_sources = payload.get("sources")
     if isinstance(raw_sources, list):
-        sources = [
+        requested_sources = [
             str(source).strip().replace("-", "_")
             for source in raw_sources
             if str(source).strip().replace("-", "_") in ALLOWED_SOURCES
         ]
     else:
         source = str(payload.get("source", "offline")).strip().replace("-", "_")
-        sources = ["arxiv", "semantic_scholar", "crossref"] if source == "hybrid" else [source]
+        requested_sources = [source]
 
-    sources = list(dict.fromkeys(source for source in sources if source in ALLOWED_SOURCES))
+    sources = normalize_sources(requested_sources, web_provider=web_provider)
     if not sources:
         sources = ["offline"]
+    academic = {"arxiv", "semantic_scholar", "crossref", "openalex"}
+    source_label = "+".join(sources)
+    if set(sources) == academic:
+        source_label = "hybrid"
+    elif "web" in sources and any(source in academic for source in sources):
+        source_label = "mixed"
 
     llm = str(payload.get("llm", "deepseek")).strip()
     if llm not in {"off", "deepseek"}:
         llm = "deepseek"
+    report_style = str(payload.get("report_style", "full") or "full").strip()
+    if report_style not in {"full", "summary", "course"}:
+        report_style = "full"
 
     from_year = _safe_int(payload.get("from_year"), DEFAULT_FROM_YEAR, 0, 2100)
     return {
         "topic": topic,
         "top_k": _safe_int(payload.get("top_k"), 5, 1, 200),
-        "source": "+".join(sources),
+        "source": source_label,
         "sources": sources,
         "from_year": from_year,
+        "depth": _safe_int(payload.get("depth"), 2, 1, 4),
+        "breadth": _safe_int(payload.get("breadth"), 4, 1, 8),
+        "report_style": report_style,
+        "web_provider": web_provider,
         "candidate_multiplier": _safe_int(
             payload.get("candidate_multiplier"),
             DEFAULT_CANDIDATE_MULTIPLIER,
@@ -195,9 +219,13 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
         "top_k": top_k,
         "candidate_multiplier": candidate_multiplier,
         "candidate_limit": candidate_limit,
+        "depth": int(request.get("depth", 2)),
+        "breadth": int(request.get("breadth", 4)),
         "from_year": normalized_from_year,
         "requested_source": requested_source,
         "selected_sources": selected_sources,
+        "web_provider": request.get("web_provider", "tavily"),
+        "report_style": request.get("report_style", "full"),
         "output_path": str(run_dir / f"{slug}.md"),
         "summary_output_path": str(run_dir / "summary.md"),
         "process_output_path": str(run_dir / "process.md"),
@@ -255,7 +283,22 @@ def _summarize_node(node_name: str, state: ResearchState, update: dict[str, Any]
         top_title = getattr(selected[0], "title", "") if selected else ""
         return (
             f"Selected {len(selected)} core papers from {len(ranked)} ranked candidates.",
-            {"top_paper": top_title},
+            {
+                "top_paper": top_title,
+                "coverage_gap_count": len(state.get("coverage_gaps", [])),
+            },
+        )
+
+    if node_name == "expand_search":
+        rounds = state.get("expansion_rounds", [])
+        added = sum(int(item.get("added_candidates", 0)) for item in rounds)
+        return (
+            f"Expansion rounds: {len(rounds)}; added {added} candidates.",
+            {
+                "round_count": len(rounds),
+                "added_candidates": added,
+                "remaining_gap_count": len(state.get("coverage_gaps", [])),
+            },
         )
 
     if node_name == "extract_evidence":
@@ -310,13 +353,20 @@ def _snapshot_state(state: ResearchState) -> dict[str, Any]:
         "topic_refinement_used": bool(state.get("topic_refinement_used", False)),
         "topic_refinement_fallback_reason": state.get("topic_refinement_fallback_reason", ""),
         "query_plan": _serialize(state.get("query_plan", [])),
+        "query_tree": _serialize(state.get("query_tree", {})),
+        "subtopics": _serialize(state.get("subtopics", [])),
+        "source_results": _serialize(state.get("source_results", {})),
         "searched_papers": _serialize(state.get("searched_papers", []))[:12],
         "selected_papers": _serialize(state.get("selected_papers", [])),
         "ranked_candidates": _serialize(state.get("ranked_candidates", []))[:20],
         "temporal_profile": _serialize(state.get("temporal_profile", {})),
         "corpus_profile": _serialize(state.get("corpus_profile", {})),
         "research_lens": _serialize(state.get("research_lens", {})),
+        "coverage_gaps": _serialize(state.get("coverage_gaps", [])),
+        "expansion_rounds": _serialize(state.get("expansion_rounds", [])),
         "evidence_items": _serialize(state.get("evidence_items", [])),
+        "evidence_matrix": _serialize(state.get("evidence_matrix", []))[:40],
+        "claim_graph": _serialize(state.get("claim_graph", [])),
         "claims": _serialize(state.get("claims", [])),
         "citation_checks": _serialize(state.get("citation_checks", [])),
         "metrics": _serialize(state.get("metrics", {})),
@@ -415,6 +465,10 @@ def _request_from_state(state: ResearchState) -> dict[str, Any]:
         "source": state.get("requested_source", "offline"),
         "sources": state.get("selected_sources", [state.get("requested_source", "offline")]),
         "from_year": state.get("from_year", DEFAULT_FROM_YEAR),
+        "depth": state.get("depth", 2),
+        "breadth": state.get("breadth", 4),
+        "report_style": state.get("report_style", "full"),
+        "web_provider": state.get("web_provider", "tavily"),
         "candidate_multiplier": state.get("candidate_multiplier", DEFAULT_CANDIDATE_MULTIPLIER),
         "max_candidates": state.get("candidate_limit"),
         "llm": state.get("llm_provider", "off"),
@@ -544,6 +598,10 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
         "sources": state.get("selected_sources", [state["requested_source"]]),
         "candidate_limit": state.get("candidate_limit"),
         "from_year": state.get("from_year"),
+        "depth": state.get("depth", 2),
+        "breadth": state.get("breadth", 4),
+        "report_style": state.get("report_style", "full"),
+        "web_provider": state.get("web_provider", "tavily"),
         "llm_provider": state.get("llm_provider", "off"),
         "refine_topic": bool(state.get("refine_topic", False)),
     }
@@ -562,6 +620,10 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
                 "selected_sources",
                 "candidate_limit",
                 "from_year",
+                "depth",
+                "breadth",
+                "report_style",
+                "web_provider",
                 "llm_provider",
                 "refine_topic",
             ],
@@ -657,14 +719,21 @@ def _run_web_job(job_id: str) -> None:
                 "topic": state["topic"],
                 "graph_runtime": state.get("graph_runtime", ""),
                 "query_plan": _serialize(state.get("query_plan", [])),
+                "query_tree": _serialize(state.get("query_tree", {})),
+                "subtopics": _serialize(state.get("subtopics", [])),
+                "source_results": _serialize(state.get("source_results", {})),
                 "searched_papers": _serialize(state.get("searched_papers", [])),
                 "ranked_candidates": _serialize(state.get("ranked_candidates", [])),
                 "selected_papers": _serialize(state.get("selected_papers", [])),
                 "research_lens": _serialize(state.get("research_lens", {})),
                 "corpus_profile": _serialize(state.get("corpus_profile", {})),
+                "coverage_gaps": _serialize(state.get("coverage_gaps", [])),
+                "expansion_rounds": _serialize(state.get("expansion_rounds", [])),
                 "temporal_profile": _serialize(state.get("temporal_profile", {})),
                 "evidence_items": _serialize(state.get("evidence_items", [])),
+                "evidence_matrix": _serialize(state.get("evidence_matrix", [])),
                 "claims": _serialize(state.get("claims", [])),
+                "claim_graph": _serialize(state.get("claim_graph", [])),
                 "citation_checks": _serialize(state.get("citation_checks", [])),
                 "node_trace": _serialize(state.get("node_trace", [])),
                 "errors": _serialize(state.get("errors", [])),

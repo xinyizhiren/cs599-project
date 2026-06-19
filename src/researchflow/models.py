@@ -34,6 +34,7 @@ class PaperRecord:
     source: str = "offline"
     citation_count: int = 0
     score: float = 0.0
+    paper_type: str = "unknown"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
