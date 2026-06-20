@@ -22,6 +22,14 @@ const metricSources = document.querySelector("#metric-sources");
 const metricQueries = document.querySelector("#metric-queries");
 const metricReading = document.querySelector("#metric-reading");
 const metricGaps = document.querySelector("#metric-gaps");
+const resultTitle = document.querySelector("#result-title");
+const resultBanner = document.querySelector(".result-banner");
+const viewReportButton = document.querySelector("#view-report-button");
+const exportCurrent = document.querySelector("#export-current");
+const clearSession = document.querySelector("#clear-session");
+const selectAllSources = document.querySelector("#select-all-sources");
+const sourceInputs = Array.from(document.querySelectorAll('input[name="sources"]'));
+const sourcesSummary = document.querySelector("#sources-summary");
 const chatMessages = document.querySelector("#chat-messages");
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
@@ -32,6 +40,16 @@ const quickActions = document.querySelector(".quick-actions");
 let activeRun = null;
 let selectedStepId = "understand_topic";
 let pollTimer = null;
+
+const DEFAULT_STEP_MILESTONES = [
+  { id: "understand_topic", name: "理解主题", label: "", description: "", status: "idle", elapsed_ms: null },
+  { id: "plan_queries", name: "生成查询计划", label: "", description: "", status: "idle", elapsed_ms: null },
+  { id: "search_papers", name: "检索文献", label: "", description: "", status: "idle", elapsed_ms: null },
+  { id: "rank_papers", name: "去重与聚类", label: "", description: "", status: "idle", elapsed_ms: null },
+  { id: "read_full_text", name: "阅读与提炼", label: "", description: "", status: "idle", elapsed_ms: null },
+  { id: "write_report", name: "生成报告", label: "", description: "", status: "idle", elapsed_ms: null },
+  { id: "evaluate_result", name: "完成", label: "", description: "", status: "idle", elapsed_ms: null },
+];
 
 function apiPath(path) {
   return new URL(path, window.location.href).toString();
@@ -63,11 +81,11 @@ function setStatus(element, status) {
 }
 
 function statusMark(status) {
-  if (status === "success") return "OK";
-  if (status === "running") return "...";
+  if (status === "success") return "✓";
+  if (status === "running") return "⌕";
   if (status === "failed" || status === "error") return "!";
-  if (status === "queued") return "..";
-  return "-";
+  if (status === "queued") return "…";
+  return "○";
 }
 
 function escapeText(value) {
@@ -81,6 +99,13 @@ function formatMs(value) {
   if (value === null || value === undefined) return "";
   const number = Number(value);
   if (!Number.isFinite(number)) return "";
+  if (number >= 60000) {
+    const minutes = Math.floor(number / 60000);
+    const seconds = Math.round((number % 60000) / 1000)
+      .toString()
+      .padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  }
   if (number >= 1000) return `${(number / 1000).toFixed(2)} s`;
   return `${Math.round(number)} ms`;
 }
@@ -91,8 +116,19 @@ function compactValue(value) {
   return String(value ?? "");
 }
 
+function formatAuthors(authors) {
+  if (Array.isArray(authors)) return authors.slice(0, 2).join(", ");
+  return String(authors || "");
+}
+
 function selectedSources(run) {
   return run?.request?.sources || [run?.request?.source || "offline"];
+}
+
+function updateSourcesSummary() {
+  if (!sourcesSummary) return;
+  const selected = sourceInputs.filter((input) => input.checked).length;
+  sourcesSummary.textContent = `已选择 ${selected} / ${sourceInputs.length} 个数据源`;
 }
 
 function getSelectedStep(run) {
@@ -117,6 +153,7 @@ function renderRuns(runs = []) {
       return `
         <button class="run-item${active}" data-run-id="${escapeText(run.id)}" type="button">
           <strong>${escapeText(run.request.topic)}</strong>
+          <span class="run-badge ${escapeText(run.status)}">${escapeText(run.status)}</span>
           <small>${escapeText(run.status)} / ${escapeText(sources)} / ${escapeText(shortId(run.id))}</small>
         </button>
       `;
@@ -131,20 +168,30 @@ function markActiveRun(runId) {
 }
 
 function renderSteps(run) {
-  if (!run?.steps?.length) {
-    stepList.innerHTML = "";
-    return;
-  }
+  const milestoneIds = [
+    "understand_topic",
+    "plan_queries",
+    "search_papers",
+    "rank_papers",
+    "read_full_text",
+    "write_report",
+    "evaluate_result",
+  ];
+  const sourceSteps = run?.steps?.length ? run.steps : DEFAULT_STEP_MILESTONES;
+  stepList.className = `step-list ${run?.status || "idle"}`;
+  const visibleSteps = milestoneIds
+    .map((id) => sourceSteps.find((step) => step.id === id))
+    .filter(Boolean);
 
-  stepList.innerHTML = run.steps
+  stepList.innerHTML = visibleSteps
     .map((step, index) => {
-      const selected = step.id === selectedStepId ? " selected" : "";
+      const selected = run && step.id === selectedStepId ? " selected" : "";
       return `
         <li class="step-card ${escapeText(step.status)}${selected}" data-step-id="${escapeText(step.id)}">
           <div class="step-node">${statusMark(step.status)}</div>
           <div class="step-main">
             <div class="step-title">
-              <strong>${index + 1}. ${escapeText(step.name)}</strong>
+              <strong>${escapeText(step.label || step.name)}</strong>
               <span>${escapeText(step.label)}</span>
             </div>
             <p class="step-summary">${escapeText(step.summary || step.description)}</p>
@@ -161,9 +208,15 @@ function renderSteps(run) {
 
 function renderInspector(run) {
   const step = getSelectedStep(run);
-  if (!step) return;
+  if (!step) {
+    inspectorTitle.textContent = "节点详情";
+    setStatus(inspectorState, "idle");
+    stepSummary.textContent = "选择一次运行后会显示节点输出。";
+    stepStats.innerHTML = "";
+    return;
+  }
 
-  inspectorTitle.textContent = step.name;
+  inspectorTitle.textContent = step.label || step.name;
   setStatus(inspectorState, step.status);
   stepSummary.textContent = step.summary || step.description;
 
@@ -195,9 +248,9 @@ function renderQueryPlan(run) {
     .map(
       (query) => `
         <div class="query-row">
-          <strong>${escapeText(query.query_id)} / ${escapeText(query.source)}</strong>
+          <strong>${escapeText(query.query_id || query.source || "Q")}</strong>
           <p>${escapeText(query.query_text)}</p>
-          <small>${escapeText(query.filters?.angle || "")} / ${escapeText(query.filters?.distance || "")}</small>
+          <small>✓</small>
         </div>
       `,
     )
@@ -210,7 +263,7 @@ function renderQueryPlan(run) {
         <div class="query-row">
           <strong>${escapeText(branch.question_id || "rq")}</strong>
           <p>${escapeText(branch.question || "")}</p>
-          <small>${escapeText(angles.join(", "))}</small>
+          <small>✓</small>
         </div>
       `;
     })
@@ -220,9 +273,9 @@ function renderQueryPlan(run) {
     .map(
       (gap) => `
         <div class="query-row">
-          <strong>Gap / ${escapeText(gap.label || "")}</strong>
+          <strong>Gap</strong>
           <p>${escapeText(gap.reason || "")}</p>
-          <small>${escapeText(gap.suggested_angle || "")}</small>
+          <small>!</small>
         </div>
       `,
     )
@@ -232,24 +285,24 @@ function renderQueryPlan(run) {
     .map(
       (row) => `
         <div class="query-row">
-          <strong>${escapeText(row.question_id || "")} / ${escapeText(row.paper_id || "")}</strong>
+          <strong>${escapeText(row.question_id || "E")}</strong>
           <p>${escapeText(row.question || "")}</p>
-          <small>${escapeText((row.evidence_ids || []).join(", "))}</small>
+          <small>✓</small>
         </div>
       `,
     )
     .join("");
   const expansionText = expansionRounds.length
-    ? `<div class="query-row"><strong>Expansion</strong><p>${escapeText(expansionRounds.length)} round(s), ${escapeText(expansionRounds.map((item) => item.added_candidates || 0).join(" + "))} added candidates</p></div>`
+    ? `<div class="query-row"><strong>EX</strong><p>补搜 ${escapeText(expansionRounds.length)} 轮，新增 ${escapeText(expansionRounds.map((item) => item.added_candidates || 0).join(" + "))} 条候选</p><small>✓</small></div>`
     : "";
   const snowballRows = snowballRecords
     .slice(0, 5)
     .map(
       (record) => `
         <div class="query-row">
-          <strong>Snowball / ${escapeText(record.direction || "")}</strong>
+          <strong>SB</strong>
           <p>${escapeText(record.seed_paper_id || "")}</p>
-          <small>${escapeText((record.added_paper_ids || []).length)} added</small>
+          <small>✓</small>
         </div>
       `,
     )
@@ -259,26 +312,26 @@ function renderQueryPlan(run) {
     .map(
       (note) => `
         <div class="query-row">
-          <strong>Reading / ${escapeText(note.paper_id || "")}</strong>
+          <strong>R</strong>
           <p>${escapeText(note.summary || "")}</p>
-          <small>${escapeText(note.status || "")} / chunks ${(note.evidence_chunk_ids || []).length}</small>
+          <small>✓</small>
         </div>
       `,
     )
     .join("");
   const readingText =
     readingBudget.attempted_papers !== undefined
-      ? `<div class="query-row"><strong>Full-Text Reading</strong><p>${escapeText(readingBudget.successful_papers || 0)} / ${escapeText(readingBudget.attempted_papers || 0)} papers, ${escapeText(run?.snapshots?.full_text_chunks?.length || 0)} chunks</p></div>`
+      ? `<div class="query-row"><strong>FT</strong><p>全文阅读 ${escapeText(readingBudget.successful_papers || 0)} / ${escapeText(readingBudget.attempted_papers || 0)} 篇，${escapeText(run?.snapshots?.full_text_chunks?.length || 0)} 个片段</p><small>✓</small></div>`
       : "";
   queryPlan.innerHTML = `
     ${queryRows}
-    ${treeRows ? `<h4>Query Tree</h4>${treeRows}` : ""}
-    ${gapRows ? `<h4>Coverage Gaps</h4>${gapRows}` : ""}
+    ${treeRows ? `<h4>查询树</h4>${treeRows}` : ""}
+    ${gapRows ? `<h4>覆盖缺口</h4>${gapRows}` : ""}
     ${expansionText}
-    ${snowballRows ? `<h4>Snowball</h4>${snowballRows}` : ""}
+    ${snowballRows ? `<h4>引用雪球</h4>${snowballRows}` : ""}
     ${readingText}
-    ${readingRows ? `<h4>Reading Notes</h4>${readingRows}` : ""}
-    ${matrixRows ? `<h4>Evidence Matrix</h4>${matrixRows}` : ""}
+    ${readingRows ? `<h4>阅读笔记</h4>${readingRows}` : ""}
+    ${matrixRows ? `<h4>证据矩阵</h4>${matrixRows}` : ""}
   `;
 }
 
@@ -292,22 +345,53 @@ function renderPapers(run) {
   }
 
   paperList.className = "paper-list";
-  paperList.innerHTML = papers
+  const rows = papers
+    .slice(0, 8)
     .map(
-      (paper) => `
-        <article class="paper-row">
-          <h3>${escapeText(paper.title)}</h3>
-          <p>${escapeText(paper.abstract || "").slice(0, 220)}</p>
-          <div class="paper-meta">
-            <span>${escapeText(paper.source)}</span>
-            <span>${escapeText(paper.year)}</span>
-            <span>score ${Number(paper.score || 0).toFixed(2)}</span>
-            <span>${escapeText(paper.paper_id)}</span>
-          </div>
-        </article>
+      (paper, index) => `
+        <tr>
+          <td class="paper-index">${index + 1}</td>
+          <td class="paper-title-cell">
+            <a href="${escapeText(paper.url || "#")}" target="_blank" rel="noreferrer">
+              ${escapeText(paper.title)}
+            </a>
+          </td>
+          <td>${escapeText(formatAuthors(paper.authors) || "未知作者")}</td>
+          <td>${escapeText(paper.source || "-")}</td>
+          <td>${escapeText(paper.year || "-")}</td>
+          <td>${Number(paper.score || 0).toFixed(2)}</td>
+          <td>
+            <span class="paper-actions" aria-label="论文操作">
+              <svg class="icon"><use href="#icon-eye"></use></svg>
+              <svg class="icon"><use href="#icon-doc"></use></svg>
+              <svg class="icon"><use href="#icon-bookmark"></use></svg>
+            </span>
+          </td>
+        </tr>
       `,
     )
     .join("");
+  const end = Math.min(papers.length, 8);
+  paperList.innerHTML = `
+    <table class="paper-table">
+      <thead>
+        <tr>
+          <th class="paper-index">#</th>
+          <th>标题</th>
+          <th>作者</th>
+          <th>来源</th>
+          <th>年份</th>
+          <th>相关度</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="table-footer">
+      <span>显示 1-${end} 条，共 ${papers.length} 条</span>
+      <span class="pager"><span class="active">1</span><span>2</span><span>3</span><span>›</span></span>
+    </div>
+  `;
 }
 
 function renderEvidence(run) {
@@ -350,18 +434,21 @@ function renderOverview(run) {
 function updateDownloadButtons(run) {
   const documents = run?.snapshots?.documents || {};
   const readyCount = Object.values(documents).filter((document) => document?.ready).length;
+  const reportReady = Boolean(documents.report?.ready);
 
   downloadActions.querySelectorAll("[data-download]").forEach((button) => {
     const document = documents[button.dataset.download];
     button.disabled = !document?.ready;
   });
+  exportCurrent.disabled = !reportReady;
+  viewReportButton.disabled = !reportReady;
 
   if (!run) {
     downloadStatus.textContent = "任务完成后可下载 Markdown 文件。";
   } else if (run.error) {
     downloadStatus.textContent = `Error: ${run.error}`;
   } else if (readyCount) {
-    downloadStatus.textContent = `${readyCount} 个 Markdown 文件已生成，可直接下载；正文不再预览以保持切换流畅。`;
+    downloadStatus.textContent = `${readyCount} 个 Markdown 文件已生成，可直接下载。`;
   } else {
     downloadStatus.textContent = "任务运行中，Markdown 文件生成后会启用下载按钮。";
   }
@@ -401,14 +488,30 @@ function renderRun(run) {
   markActiveRun(run?.id);
   const status = run?.status || "idle";
   setStatus(statusChip, status);
+  resultBanner.className = `result-banner ${status}`;
   subtitle.textContent = run
     ? `${run.request.topic} / ${selectedSources(run).join(" + ")} / ${run.request.llm} / ${shortId(run.id)}`
     : "提交一个研究主题，查看可追踪的理解、检索、证据和报告生成流程。";
   processCaption.textContent = run?.current_step
     ? `正在执行 ${run.current_step}`
-    : status === "success"
-      ? "任务完成"
-      : "等待任务开始";
+      : status === "success"
+        ? "任务完成"
+        : "等待任务开始";
+
+  const papers = run?.snapshots?.selected_papers || [];
+  const evidence = run?.snapshots?.evidence_items || [];
+  if (!run) {
+    resultTitle.textContent = "等待任务开始";
+  } else if (status === "success") {
+    resultTitle.textContent = "研究完成";
+    processCaption.textContent = `共检索到 ${papers.length} 篇文献，沉淀 ${evidence.length} 条证据，使用 ${selectedSources(run).length} 个数据源。`;
+  } else if (status === "running" || status === "queued") {
+    resultTitle.textContent = "研究进行中";
+  } else if (status === "failed" || status === "error") {
+    resultTitle.textContent = "研究失败";
+  } else {
+    resultTitle.textContent = "等待任务开始";
+  }
 
   const elapsed = (run?.snapshots?.node_trace || []).reduce(
     (sum, item) => sum + Number(item.elapsed_ms || 0),
@@ -519,6 +622,32 @@ stepList.addEventListener("click", (event) => {
 
 refreshRuns.addEventListener("click", refreshRunList);
 
+selectAllSources.addEventListener("click", () => {
+  sourceInputs.forEach((input) => {
+    input.checked = true;
+  });
+  updateSourcesSummary();
+});
+
+sourceInputs.forEach((input) => {
+  input.addEventListener("change", updateSourcesSummary);
+});
+
+clearSession.addEventListener("click", () => {
+  activeRun = null;
+  selectedStepId = "understand_topic";
+  renderRun(null);
+  markActiveRun("");
+});
+
+function downloadReportIfReady() {
+  if (!activeRun || exportCurrent.disabled) return;
+  window.location.href = apiPath(`./api/runs/${encodeURIComponent(activeRun.id)}/download/report`);
+}
+
+exportCurrent.addEventListener("click", downloadReportIfReady);
+viewReportButton.addEventListener("click", downloadReportIfReady);
+
 downloadActions.addEventListener("click", (event) => {
   const button = event.target.closest("[data-download]");
   if (!button || !activeRun || button.disabled) return;
@@ -529,6 +658,8 @@ downloadActions.addEventListener("click", (event) => {
 updateDownloadButtons(null);
 renderChat(null);
 renderOverview(null);
+renderSteps(null);
+updateSourcesSummary();
 
 async function sendChatMessage(message) {
   if (!activeRun || !message.trim()) return;
