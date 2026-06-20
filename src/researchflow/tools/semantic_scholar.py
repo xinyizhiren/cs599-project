@@ -24,6 +24,7 @@ SEMANTIC_SCHOLAR_FIELDS = ",".join(
         "url",
         "externalIds",
         "citationCount",
+        "openAccessPdf",
         "venue",
         "publicationDate",
     ]
@@ -80,6 +81,10 @@ def parse_semantic_scholar_response(json_text: str, limit: int | None = None) ->
         doi = external_ids.get("DOI")
         arxiv_id = external_ids.get("ArXiv")
         url = str(item.get("url") or f"https://www.semanticscholar.org/paper/{paper_id}")
+        open_access_pdf = item.get("openAccessPdf")
+        pdf_url = ""
+        if isinstance(open_access_pdf, dict):
+            pdf_url = str(open_access_pdf.get("url") or "").strip()
         abstract = str(
             item.get("abstract")
             or "No abstract is available in the Semantic Scholar metadata for this paper."
@@ -97,6 +102,10 @@ def parse_semantic_scholar_response(json_text: str, limit: int | None = None) ->
                 arxiv_id=str(arxiv_id).strip() if arxiv_id else None,
                 source="semantic_scholar",
                 citation_count=_as_int(item.get("citationCount")),
+                pdf_url=pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else None),
+                open_access_url=pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else None),
+                merged_sources=["semantic_scholar"],
+                metadata_confidence=0.82 if pdf_url or doi or arxiv_id else 0.68,
             )
         )
         if limit is not None and len(papers) >= limit:

@@ -76,6 +76,45 @@
             </select>
           </label>
 
+          <div class="form-grid">
+            <label class="field">
+              <span>阅读深度</span>
+              <select id="read-depth" name="read_depth">
+                <option value="abstract" selected>摘要级</option>
+                <option value="auto">自动全文</option>
+                <option value="fulltext">强制全文</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>引用雪球</span>
+              <select id="snowball" name="snowball">
+                <option value="none" selected>关闭</option>
+                <option value="backward">参考文献</option>
+                <option value="forward">被引论文</option>
+                <option value="both">双向</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>全文篇数</span>
+              <input id="max-fulltext-papers" name="max_fulltext_papers" type="number" min="0" max="20" value="6" />
+            </label>
+            <label class="field">
+              <span>阅读预算</span>
+              <input id="reading-budget-chars" name="reading_budget_chars" type="number" min="1000" max="400000" value="80000" />
+            </label>
+            <label class="field">
+              <span>补搜轮数</span>
+              <input id="expansion-rounds" name="expansion_rounds" type="number" min="0" max="3" value="1" />
+            </label>
+            <label class="field">
+              <span>总结样式</span>
+              <select id="summary-style" name="summary_style">
+                <option value="comprehensive" selected>全面总结</option>
+                <option value="brief">简短总结</option>
+              </select>
+            </label>
+          </div>
+
           <label class="toggle-row">
             <input id="require-live" name="require_live" type="checkbox" />
             <span>要求实时数据源</span>
@@ -175,6 +214,9 @@
           <h3>继续调整</h3>
           <div class="quick-actions" aria-label="快捷调整">
             <button type="button" data-chat-prompt="多补充 security robustness 方向">补安全方向</button>
+            <button type="button" data-chat-prompt="精读 P1 并更新报告">精读 P1</button>
+            <button type="button" data-chat-prompt="补充引用网络里的 benchmark 论文">引用雪球</button>
+            <button type="button" data-chat-prompt="做一个方法对比">方法对比</button>
             <button type="button" data-chat-prompt="只看近三年的论文">近三年</button>
             <button type="button" data-chat-prompt="去掉应用案例论文">少应用论文</button>
             <button type="button" data-chat-prompt="把总结写得更短">重写摘要</button>

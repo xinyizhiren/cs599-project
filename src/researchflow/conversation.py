@@ -24,6 +24,8 @@ from .pipeline import (
     detect_coverage_gaps,
     filter_papers_by_year,
     node_extract_evidence,
+    node_read_full_text,
+    node_snowball_search,
     node_write_report,
     rank_all_papers,
     select_diverse_papers,
@@ -42,6 +44,11 @@ VALID_ACTIONS = {
     "expand_search",
     "filter_papers",
     "regenerate_section",
+    "deepen_reading",
+    "add_snowball_search",
+    "compare_methods",
+    "rewrite_section",
+    "expand_question",
 }
 DOMAIN_APPLICATION_TERMS = {
     "application",
@@ -95,7 +102,8 @@ def classify_conversation_intent(state: ResearchState, user_message: str) -> dic
                     "Classify a follow-up message for a literature review agent. Return only JSON "
                     "with action, parameters, and rationale. action must be one of "
                     "answer_question, rewrite_report, adjust_scope, expand_search, filter_papers, "
-                    "or regenerate_section. Keep rationale concise and do not include hidden reasoning."
+                    "regenerate_section, deepen_reading, add_snowball_search, compare_methods, "
+                    "rewrite_section, or expand_question. Keep rationale concise and do not include hidden reasoning."
                 ),
                 {
                     "message": user_message,
@@ -126,6 +134,56 @@ def classify_conversation_intent_fallback(user_message: str) -> dict[str, Any]:
         parameters["from_year"] = int(year_match.group(1))
     if "近三年" in user_message or "last 3" in text:
         parameters["from_year"] = datetime.now(timezone.utc).year - 2
+
+    if any(keyword in user_message for keyword in ("精读", "全文", "深入阅读")) or any(
+        keyword in text for keyword in ("deep read", "full text", "fulltext", "read paper")
+    ):
+        paper_ids = re.findall(r"\b(?:P|p)([0-9]+)\b", user_message)
+        if paper_ids:
+            parameters["paper_indexes"] = [int(item) for item in paper_ids]
+        parameters["read_depth"] = "auto"
+        return {
+            "action": "deepen_reading",
+            "parameters": parameters,
+            "rationale": "The message asks to deepen reading with public full text.",
+            "classifier": "rules",
+        }
+
+    if any(keyword in user_message for keyword in ("引用网络", "引用雪球", "参考文献网络")) or any(
+        keyword in text for keyword in ("snowball", "citation network", "references", "cited by")
+    ):
+        parameters["snowball"] = "both"
+        return {
+            "action": "add_snowball_search",
+            "parameters": parameters,
+            "rationale": "The message asks to expand through citation snowball search.",
+            "classifier": "rules",
+        }
+
+    if any(keyword in user_message for keyword in ("方法对比", "对比方法", "比较方法")) or "compare method" in text:
+        return {
+            "action": "compare_methods",
+            "parameters": parameters,
+            "rationale": "The message asks for method comparison using current reading notes.",
+            "classifier": "rules",
+        }
+
+    if any(keyword in user_message for keyword in ("重写第", "改写第", "重写章节", "重写这一节")) or "rewrite section" in text:
+        return {
+            "action": "rewrite_section",
+            "parameters": parameters,
+            "rationale": "The message asks to rewrite a report section.",
+            "classifier": "rules",
+        }
+
+    if any(keyword in user_message for keyword in ("扩展问题", "展开问题", "补充问题")) or "expand question" in text:
+        parameters["angle"] = _infer_angle(user_message)
+        return {
+            "action": "expand_question",
+            "parameters": parameters,
+            "rationale": "The message asks to expand a research question.",
+            "classifier": "rules",
+        }
 
     if any(keyword in user_message for keyword in ("删掉", "去掉", "排除", "不要")) or "remove" in text:
         if "应用" in user_message or "application" in text or "case" in text:
@@ -291,6 +349,7 @@ def _rebuild_after_selection_change(state: ResearchState, action: str) -> None:
         state.get("actual_source", ""),
         state.get("fallback_reason", ""),
     )
+    state.update(node_read_full_text(state))
     state.update(node_extract_evidence(state))
     claims = synthesize_claims(effective_topic, state["evidence_items"])
     state["claims"] = claims
@@ -373,7 +432,7 @@ def apply_conversation_action(
     start = perf_counter()
     updated = False
 
-    if action in {"rewrite_report", "regenerate_section"}:
+    if action in {"rewrite_report", "regenerate_section", "rewrite_section"}:
         summary_markdown = _render_concise_summary(state, user_message)
         state["summary_markdown"] = summary_markdown
         _write_text(state.get("summary_output_path"), summary_markdown)
@@ -401,7 +460,7 @@ def apply_conversation_action(
         reply = f"已排除 {len(excluded)} 篇论文并重新生成核心文献、证据、报告和评估。"
         output_keys = ["excluded_paper_ids", "selected_papers", "report_markdown"]
 
-    elif action == "expand_search":
+    elif action in {"expand_search", "expand_question"}:
         angle = str(parameters.get("angle") or "adjacent_topic")
         effective_topic = state.get("effective_topic", state.get("topic", ""))
         query_plan = list(state.get("query_plan", []))
@@ -437,6 +496,43 @@ def apply_conversation_action(
         updated = True
         reply = f"已追加 `{angle}` 方向检索并刷新候选池、核心论文和报告。"
         output_keys = ["query_plan", "searched_papers", "selected_papers", "report_markdown"]
+
+    elif action == "add_snowball_search":
+        state["snowball"] = str(parameters.get("snowball") or "both")
+        state.update(node_snowball_search(state))
+        _rebuild_after_selection_change(state, action)
+        updated = True
+        records = state.get("snowball_records", [])
+        added = sum(len(getattr(record, "added_paper_ids", [])) for record in records)
+        reply = f"已执行引用雪球检索，记录 {len(records)} 条，新增候选约 {added} 条，并刷新报告。"
+        output_keys = ["snowball_records", "searched_papers", "selected_papers", "report_markdown"]
+
+    elif action == "deepen_reading":
+        state["read_depth"] = str(parameters.get("read_depth") or "auto")
+        if parameters.get("max_fulltext_papers"):
+            state["max_fulltext_papers"] = int(parameters["max_fulltext_papers"])
+        _rebuild_after_selection_change(state, action)
+        updated = True
+        budget = state.get("reading_budget", {})
+        reply = (
+            "已尝试公开全文精读并刷新阅读笔记、证据和报告；"
+            f"成功 {budget.get('successful_papers', 0)} / {budget.get('attempted_papers', 0)} 篇。"
+        )
+        output_keys = ["full_text_chunks", "reading_notes", "evidence_items", "report_markdown"]
+
+    elif action == "compare_methods":
+        notes = state.get("reading_notes", [])
+        lines = ["基于当前阅读笔记，方法对比可以先看这几条："]
+        for index, note in enumerate(notes[:6], start=1):
+            methods = getattr(note, "methods", [])
+            limitations = getattr(note, "limitations", [])
+            lines.append(
+                f"{index}. `{getattr(note, 'paper_id', '')}` 方法线索："
+                f"{'; '.join(methods[:2]) or '当前笔记未抽取到明确方法'}；"
+                f"局限：{'; '.join(limitations[:1]) or '需全文复核'}"
+            )
+        reply = "\n".join(lines)
+        output_keys = ["reply", "reading_notes"]
 
     elif action == "adjust_scope":
         if parameters.get("from_year"):

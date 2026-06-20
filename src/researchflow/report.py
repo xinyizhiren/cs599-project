@@ -24,6 +24,12 @@ def _sanitize_secret_text(value: Any) -> str:
     return text
 
 
+def _obj_value(item: Any, key: str, default: Any = "") -> Any:
+    if isinstance(item, dict):
+        return item.get(key, default)
+    return getattr(item, key, default)
+
+
 def _category_label(category: str) -> str:
     labels = {
         "contribution": "贡献",
@@ -273,6 +279,13 @@ def render_full_report(state: dict[str, Any]) -> str:
     source_results = state.get("source_results", {})
     coverage_gaps = state.get("coverage_gaps", [])
     expansion_rounds = state.get("expansion_rounds", [])
+    snowball_records = state.get("snowball_records", [])
+    metadata_enrichment = state.get("metadata_enrichment", {})
+    reading_budget = state.get("reading_budget", {})
+    full_text_chunks = state.get("full_text_chunks", [])
+    reading_notes = state.get("reading_notes", [])
+    question_synthesis = state.get("question_synthesis", [])
+    global_synthesis = state.get("global_synthesis", {})
     metrics = state.get("metrics", {})
     temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {})
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -312,6 +325,9 @@ def render_full_report(state: dict[str, Any]) -> str:
         f"- 候选文献数：{candidate_count}",
         f"- 核心文献数：{len(selected_papers)}",
         f"- Evidence 条目数：{len(evidence_items)}",
+        f"- 全文 chunk 数：{len(full_text_chunks)}",
+        f"- 阅读笔记数：{len(reading_notes)}",
+        f"- Snowball 记录数：{len(snowball_records)}",
         f"- Citation validity：{citation_rate:.3f}",
         f"- Claim-Evidence coverage：{evidence_coverage:.3f}",
         "",
@@ -327,6 +343,21 @@ def render_full_report(state: dict[str, Any]) -> str:
             "调研的重点不是把所有论文逐篇堆叠，而是回答三个问题：这个领域正在解决什么问题、已有方法如何形成谱系、"
             "哪些结论有证据支持以及哪些方向仍然存在研究空白。由于当前版本主要读取标题、摘要和开放元数据，报告适合作为"
             "快速建立领域地图和确定精读清单的初稿；涉及实验数值、方法细节和强因果判断时仍需要人工复核全文。"
+        ),
+        "",
+        "### 深度阅读与引用雪球",
+        "",
+        (
+            f"本轮阅读深度为 `{state.get('read_depth', 'abstract')}`，公开全文读取成功 "
+            f"{reading_budget.get('successful_papers', 0)} / {reading_budget.get('attempted_papers', 0)} 篇，"
+            f"生成 {len(full_text_chunks)} 个全文 chunk 和 {len(reading_notes)} 份 PaperReadingNote。"
+            "系统采用 paper -> chunks -> reading notes -> research-question synthesis -> global synthesis 的层级压缩，"
+            "避免把海量论文一次性塞入大模型上下文。"
+        ),
+        (
+            f"引用雪球模式为 `{state.get('snowball', 'none')}`，"
+            f"新增候选统计：{metadata_enrichment.get('added_candidates', 0)}；"
+            "snowball 论文只作为扩展候选进入排序，不会绕过主题相关性和 Citation Check。"
         ),
         "",
         "## 2. 调研问题与检索策略",
@@ -411,6 +442,10 @@ def render_full_report(state: dict[str, Any]) -> str:
         lines.append("当前主题未启用专门领域 Lens，系统主要依据论文类型、年份、来源和关键词相关性组织内容。")
 
     lines.extend(["", "## 5. 核心论文精读", ""])
+    notes_by_paper = {
+        str(_obj_value(note, "paper_id", "")): note
+        for note in reading_notes
+    }
     for index, paper in enumerate(selected_papers, start=1):
         paper_evidence = evidence_by_paper.get(paper.paper_id, [])
         check = check_by_paper.get(paper.paper_id)
@@ -431,6 +466,18 @@ def render_full_report(state: dict[str, Any]) -> str:
             lines.append("- 证据摘要：")
             for item in paper_evidence[:3]:
                 lines.append(f"  - `{item.evidence_id}` {item.category}: {_clip_table_text(item.claim, 220)}")
+        note = notes_by_paper.get(paper.paper_id)
+        if note:
+            note_summary = _obj_value(note, "summary", "")
+            note_status = _obj_value(note, "status", "")
+            methods = _obj_value(note, "methods", [])
+            limitations = _obj_value(note, "limitations", [])
+            lines.append(f"- 阅读笔记状态：{note_status}")
+            lines.append(f"- 精读摘要：{_clip_table_text(str(note_summary), 260)}")
+            if methods:
+                lines.append(f"- 方法线索：{_safe_join([_clip_table_text(str(item), 100) for item in methods[:2]])}")
+            if limitations:
+                lines.append(f"- 局限线索：{_safe_join([_clip_table_text(str(item), 100) for item in limitations[:2]])}")
         lines.append("")
 
     lines.extend(
@@ -547,6 +594,33 @@ def render_full_report(state: dict[str, Any]) -> str:
         [
             "",
             "## 12. 附录：Evidence Matrix 与调研过程",
+            "",
+            "### 分层阅读综合",
+            "",
+            f"- Reading budget: `{reading_budget}`",
+            f"- Global synthesis: `{global_synthesis}`",
+            "",
+            "| Research Question | Paper IDs | Synthesis |",
+            "| --- | --- | --- |",
+        ]
+    )
+    for row in question_synthesis[:10]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _clip_table_text(str(row.get("question", "")), 110),
+                    ", ".join(f"`{item}`" for item in row.get("paper_ids", [])),
+                    _clip_table_text(str(row.get("synthesis", "")), 220),
+                ]
+            )
+            + " |"
+        )
+    if not question_synthesis:
+        lines.append("| - | - | 未生成分层综合。 |")
+
+    lines.extend(
+        [
             "",
             "### Evidence Matrix",
             "",
@@ -681,6 +755,11 @@ def render_summary_report(state: dict[str, Any]) -> str:
     adjacent_topics = [str(item) for item in topic_refinement.get("adjacent_topics", [])]
     temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {})
     candidate_count = int(corpus_profile.get("candidate_count", len(state.get("searched_papers", []))))
+    reading_budget = state.get("reading_budget", {})
+    reading_notes = state.get("reading_notes", [])
+    full_text_chunks = state.get("full_text_chunks", [])
+    snowball_records = state.get("snowball_records", [])
+    global_synthesis = state.get("global_synthesis", {})
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     dominant_dimensions = _dominant_dimensions(research_lens)
@@ -700,6 +779,9 @@ def render_summary_report(state: dict[str, Any]) -> str:
         f"- 候选文献池：{candidate_count}",
         f"- 核心文献数：{len(selected_papers)}",
         f"- 查询计划数：{len(query_plan)}",
+        f"- 全文 chunk 数：{len(full_text_chunks)}",
+        f"- 阅读笔记数：{len(reading_notes)}",
+        f"- Snowball 记录数：{len(snowball_records)}",
         f"- 时间范围：{_format_year_range(temporal_profile)}",
         f"- 引用校验通过率：{citation_rate:.3f}",
         f"- Claim-Evidence 覆盖率：{evidence_coverage:.3f}",
@@ -713,6 +795,9 @@ def render_summary_report(state: dict[str, Any]) -> str:
         "- 相邻扩展方向："
         + ("；".join(adjacent_topics) if adjacent_topics else "暂无显式相邻扩展方向。"),
         "- 本次目标：不是替代完整人工综述，而是快速建立领域地图、识别优先阅读材料、抽取可追溯证据，并给出下一步调研入口。",
+        f"- 深度阅读：`{state.get('read_depth', 'abstract')}`；公开全文成功 "
+        f"{reading_budget.get('successful_papers', 0)} / {reading_budget.get('attempted_papers', 0)}；"
+        f"全局压缩摘要：{_clip_table_text(str(global_synthesis.get('summary', '')), 180)}",
         "",
         "## 一句话结论",
         "",
@@ -956,6 +1041,12 @@ def render_process_markdown(state: dict[str, Any]) -> str:
     source_results = state.get("source_results", {})
     coverage_gaps = state.get("coverage_gaps", [])
     expansion_rounds = state.get("expansion_rounds", [])
+    snowball_records = state.get("snowball_records", [])
+    metadata_enrichment = state.get("metadata_enrichment", {})
+    reading_budget = state.get("reading_budget", {})
+    full_text_chunks = state.get("full_text_chunks", [])
+    reading_notes = state.get("reading_notes", [])
+    question_synthesis = state.get("question_synthesis", [])
     topic_refinement = state.get("topic_refinement", {})
     revision_history = state.get("revision_history", [])
 
@@ -980,6 +1071,10 @@ def render_process_markdown(state: dict[str, Any]) -> str:
         f"- Actual source: `{state.get('actual_source', '')}`",
         f"- Candidate limit: `{state.get('candidate_limit', '')}`",
         f"- Candidate multiplier: `{state.get('candidate_multiplier', '')}`",
+        f"- Read depth: `{state.get('read_depth', 'abstract')}`",
+        f"- Snowball: `{state.get('snowball', 'none')}`",
+        f"- Max full-text papers: `{state.get('max_fulltext_papers', 0)}`",
+        f"- Reading budget chars: `{state.get('reading_budget_chars', 0)}`",
         f"- From year: `{state.get('from_year', '') or 'None'}`",
         f"- Fallback reason: {_sanitize_secret_text(state.get('fallback_reason', '') or 'None')}",
         f"- Report path: `{state.get('report_path', '')}`",
@@ -1165,6 +1260,61 @@ def render_process_markdown(state: dict[str, Any]) -> str:
             )
     else:
         lines.append("- No expansion round was needed or executed.")
+
+    lines.extend(["", "## Snowball Search", ""])
+    if snowball_records:
+        lines.append(f"- Metadata enrichment: `{_sanitize_secret_text(json_like(metadata_enrichment))}`")
+        lines.append("| Seed | Direction | Added Papers | Fallback |")
+        lines.append("| --- | --- | ---: | --- |")
+        for record in snowball_records:
+            seed = _obj_value(record, "seed_paper_id", "")
+            direction = _obj_value(record, "direction", "")
+            added = _obj_value(record, "added_paper_ids", [])
+            fallback = _obj_value(record, "fallback_reason", "")
+            lines.append(
+                f"| `{seed}` | {direction} | {len(added)} | {_clip_table_text(_sanitize_secret_text(fallback or 'None'), 160)} |"
+            )
+    else:
+        lines.append("- Snowball search was disabled or had no OpenAlex seed papers.")
+
+    lines.extend(["", "## Full-Text Reading", ""])
+    lines.append(f"- Reading budget: `{_sanitize_secret_text(json_like(reading_budget))}`")
+    lines.append(f"- Full-text chunks: {len(full_text_chunks)}")
+    if reading_notes:
+        lines.append("| Paper ID | Status | Source | Chunk IDs | Summary |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for note in reading_notes:
+            chunk_ids = _obj_value(note, "evidence_chunk_ids", [])
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{_obj_value(note, 'paper_id', '')}`",
+                        str(_obj_value(note, "status", "")),
+                        str(_obj_value(note, "source", "")),
+                        ", ".join(f"`{item}`" for item in chunk_ids[:4]) or "None",
+                        _clip_table_text(str(_obj_value(note, "summary", "")), 180),
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("- No reading notes were produced.")
+
+    if question_synthesis:
+        lines.extend(["", "## Research-Question Synthesis", "", "| Question | Paper IDs | Synthesis |", "| --- | --- | --- |"])
+        for row in question_synthesis[:12]:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _clip_table_text(str(row.get("question", "")), 120),
+                        ", ".join(f"`{item}`" for item in row.get("paper_ids", [])),
+                        _clip_table_text(str(row.get("synthesis", "")), 180),
+                    ]
+                )
+                + " |"
+            )
 
     lines.extend(
         [

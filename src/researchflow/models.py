@@ -35,6 +35,68 @@ class PaperRecord:
     citation_count: int = 0
     score: float = 0.0
     paper_type: str = "unknown"
+    pdf_url: str | None = None
+    open_access_url: str | None = None
+    merged_sources: list[str] = field(default_factory=list)
+    metadata_confidence: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class FullTextChunk:
+    chunk_id: str
+    paper_id: str
+    text: str
+    source_url: str
+    section_hint: str = ""
+    token_estimate: int = 0
+    char_start: int = 0
+    char_end: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class PaperReadingNote:
+    note_id: str
+    paper_id: str
+    status: str
+    summary: str
+    methods: list[str] = field(default_factory=list)
+    experiments: list[str] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
+    future_work: list[str] = field(default_factory=list)
+    evidence_chunk_ids: list[str] = field(default_factory=list)
+    source: str = "abstract"
+    fallback_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class SnowballRecord:
+    seed_paper_id: str
+    direction: str
+    added_paper_ids: list[str]
+    query_url: str = ""
+    fallback_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class ResearchMemoryItem:
+    memory_id: str
+    scope: str
+    content: str
+    evidence_ids: list[str] = field(default_factory=list)
+    paper_ids: list[str] = field(default_factory=list)
+    confidence: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

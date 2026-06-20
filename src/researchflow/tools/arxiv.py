@@ -90,6 +90,10 @@ def parse_arxiv_feed(xml_text: str, limit: int | None = None) -> list[PaperRecor
                 doi=doi,
                 arxiv_id=arxiv_id,
                 source="arxiv",
+                pdf_url=f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+                open_access_url=f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+                merged_sources=["arxiv"],
+                metadata_confidence=0.9,
             )
         )
         if limit is not None and len(papers) >= limit:

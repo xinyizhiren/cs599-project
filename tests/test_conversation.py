@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from researchflow.conversation import classify_conversation_intent, handle_conversation_turn
-from researchflow.models import PaperRecord
+from researchflow.models import PaperReadingNote, PaperRecord, SnowballRecord
 from researchflow.pipeline import run_research
 from researchflow.session import load_session
 from researchflow.web import continue_conversation
@@ -89,6 +89,74 @@ def test_expand_search_adds_query_and_rebuilds(monkeypatch) -> None:
     assert result["action"] == "expand_search"
     assert any(query.filters.get("conversation") for query in state["query_plan"])
     assert any(paper.paper_id == "arxiv:security-rag" for paper in state["searched_papers"])
+
+
+def test_deepen_reading_refreshes_notes(monkeypatch) -> None:
+    state = _offline_state("retrieval augmented generation")
+
+    def fake_read_full_text(current_state):
+        paper = current_state["selected_papers"][0]
+        return {
+            "full_text_chunks": [],
+            "reading_notes": [
+                PaperReadingNote(
+                    note_id="note-test",
+                    paper_id=paper.paper_id,
+                    status="full_text",
+                    summary="Full-text note summary.",
+                    methods=["Method comparison evidence."],
+                    limitations=["Needs manual validation."],
+                    source="full_text",
+                )
+            ],
+            "reading_budget": {"attempted_papers": 1, "successful_papers": 1, "failed_papers": 0},
+            "question_synthesis": [],
+            "global_synthesis": {"summary": "Fake synthesis."},
+        }
+
+    monkeypatch.setattr("researchflow.conversation.node_read_full_text", fake_read_full_text)
+
+    result = handle_conversation_turn(state, "精读 P1 并更新报告")
+
+    assert result["action"] == "deepen_reading"
+    assert state["read_depth"] == "auto"
+    assert state["reading_notes"][0].summary == "Full-text note summary."
+    assert any(item.paper_id == state["selected_papers"][0].paper_id for item in state["evidence_items"])
+
+
+def test_add_snowball_search_refreshes_candidates(monkeypatch) -> None:
+    state = _offline_state("retrieval augmented generation")
+    extra = PaperRecord(
+        paper_id="openalex:W999",
+        title="Snowball Benchmark for Retrieval-Augmented Generation",
+        authors=["S. Author"],
+        year=2026,
+        abstract="This benchmark evaluates retrieval augmented generation systems.",
+        url="https://openalex.org/W999",
+        source="openalex",
+        citation_count=20,
+    )
+
+    def fake_snowball(current_state):
+        return {
+            "searched_papers": [extra] + current_state["searched_papers"],
+            "snowball_records": [
+                SnowballRecord(
+                    seed_paper_id="openalex:W1",
+                    direction="forward",
+                    added_paper_ids=[extra.paper_id],
+                )
+            ],
+            "metadata_enrichment": {"added_candidates": 1},
+        }
+
+    monkeypatch.setattr("researchflow.conversation.node_snowball_search", fake_snowball)
+
+    result = handle_conversation_turn(state, "补充引用网络里的 benchmark 论文")
+
+    assert result["action"] == "add_snowball_search"
+    assert state["snowball_records"][0].added_paper_ids == [extra.paper_id]
+    assert any(paper.paper_id == extra.paper_id for paper in state["searched_papers"])
 
 
 def test_filter_papers_removes_domain_applications() -> None:

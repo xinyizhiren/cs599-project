@@ -178,6 +178,9 @@ function renderQueryPlan(run) {
   const coverageGaps = run?.snapshots?.coverage_gaps || [];
   const expansionRounds = run?.snapshots?.expansion_rounds || [];
   const evidenceMatrix = run?.snapshots?.evidence_matrix || [];
+  const snowballRecords = run?.snapshots?.snowball_records || [];
+  const readingNotes = run?.snapshots?.reading_notes || [];
+  const readingBudget = run?.snapshots?.reading_budget || {};
   if (!queries.length && !(queryTree.branches || []).length) {
     queryPlan.className = "query-plan empty-state";
     queryPlan.textContent = "暂无数据";
@@ -235,11 +238,42 @@ function renderQueryPlan(run) {
   const expansionText = expansionRounds.length
     ? `<div class="query-row"><strong>Expansion</strong><p>${escapeText(expansionRounds.length)} round(s), ${escapeText(expansionRounds.map((item) => item.added_candidates || 0).join(" + "))} added candidates</p></div>`
     : "";
+  const snowballRows = snowballRecords
+    .slice(0, 5)
+    .map(
+      (record) => `
+        <div class="query-row">
+          <strong>Snowball / ${escapeText(record.direction || "")}</strong>
+          <p>${escapeText(record.seed_paper_id || "")}</p>
+          <small>${escapeText((record.added_paper_ids || []).length)} added</small>
+        </div>
+      `,
+    )
+    .join("");
+  const readingRows = readingNotes
+    .slice(0, 5)
+    .map(
+      (note) => `
+        <div class="query-row">
+          <strong>Reading / ${escapeText(note.paper_id || "")}</strong>
+          <p>${escapeText(note.summary || "")}</p>
+          <small>${escapeText(note.status || "")} / chunks ${(note.evidence_chunk_ids || []).length}</small>
+        </div>
+      `,
+    )
+    .join("");
+  const readingText =
+    readingBudget.attempted_papers !== undefined
+      ? `<div class="query-row"><strong>Full-Text Reading</strong><p>${escapeText(readingBudget.successful_papers || 0)} / ${escapeText(readingBudget.attempted_papers || 0)} papers, ${escapeText(run?.snapshots?.full_text_chunks?.length || 0)} chunks</p></div>`
+      : "";
   queryPlan.innerHTML = `
     ${queryRows}
     ${treeRows ? `<h4>Query Tree</h4>${treeRows}` : ""}
     ${gapRows ? `<h4>Coverage Gaps</h4>${gapRows}` : ""}
     ${expansionText}
+    ${snowballRows ? `<h4>Snowball</h4>${snowballRows}` : ""}
+    ${readingText}
+    ${readingRows ? `<h4>Reading Notes</h4>${readingRows}` : ""}
     ${matrixRows ? `<h4>Evidence Matrix</h4>${matrixRows}` : ""}
   `;
 }
@@ -420,6 +454,12 @@ form.addEventListener("submit", async (event) => {
     breadth: Number(formData.get("breadth")),
     report_style: formData.get("report_style"),
     web_provider: formData.get("web_provider"),
+    read_depth: formData.get("read_depth"),
+    max_fulltext_papers: Number(formData.get("max_fulltext_papers")),
+    reading_budget_chars: Number(formData.get("reading_budget_chars")),
+    snowball: formData.get("snowball"),
+    expansion_rounds: Number(formData.get("expansion_rounds")),
+    summary_style: formData.get("summary_style"),
     require_live: formData.get("require_live") === "on",
     llm: formData.get("llm_deepseek") === "on" ? "deepseek" : "off",
     refine_topic: formData.get("refine_topic") === "on",

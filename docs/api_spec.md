@@ -30,6 +30,12 @@ python -m researchflow run "<topic>" --top-k 5 --output examples/reports/report.
 | --breadth | int | 否 | 4 | 每层研究问题/子查询宽度 |
 | --report-style | string | 否 | full | 报告风格，支持 full、summary、course；full 默认输出完整中文调研报告 |
 | --web-provider | string | 否 | tavily | Web 检索提供方，支持 off、tavily；无 `TAVILY_API_KEY` 时自动跳过 |
+| --read-depth | string | 否 | abstract | 阅读深度，支持 abstract、auto、fulltext；auto/fulltext 尝试读取公开 PDF/OA URL |
+| --max-fulltext-papers | int | 否 | 6 | 单次任务最多尝试全文精读的核心论文数 |
+| --reading-budget-chars | int | 否 | 80000 | 全文 chunk 与阅读笔记的字符预算 |
+| --snowball | string | 否 | none | OpenAlex 引用雪球扩展，支持 none、backward、forward、both |
+| --expansion-rounds | int | 否 | 1 | 覆盖缺口自动补搜轮数，0 表示关闭 |
+| --summary-style | string | 否 | comprehensive | 总结详细度，支持 brief、comprehensive |
 | --output | path | 否 | examples/reports/{task_id}.md | 报告输出路径 |
 | --summary-output | path | 否 | 无 | 最终综合总结 Markdown 输出路径 |
 | --process-output | path | 否 | 无 | 调研过程记录 Markdown 输出路径 |
@@ -113,7 +119,7 @@ Content-Type: application/json
 }
 ```
 
-`action` 支持 `answer_question`、`rewrite_report`、`adjust_scope`、`expand_search`、`filter_papers`、`regenerate_section`。接口不返回隐藏推理链，只返回 action、回复和可审计 revision。
+`action` 支持 `answer_question`、`rewrite_report`、`adjust_scope`、`expand_search`、`filter_papers`、`regenerate_section`、`deepen_reading`、`add_snowball_search`、`compare_methods`、`rewrite_section`、`expand_question`。接口不返回隐藏推理链，只返回 action、回复和可审计 revision。
 
 ## 3. 环境变量
 
@@ -158,6 +164,12 @@ def run_research(
     breadth: int = 4,
     report_style: str = "full",
     web_provider: str = "tavily",
+    read_depth: str = "abstract",
+    max_fulltext_papers: int = 6,
+    reading_budget_chars: int = 80000,
+    snowball: str = "none",
+    expansion_rounds: int = 1,
+    summary_style: str = "comprehensive",
 ) -> ResearchResult:
     ...
 ```
@@ -346,11 +358,60 @@ def write_report(
   "arxiv_id": "string|null",
   "source": "string",
   "citation_count": 0,
-  "paper_type": "survey|benchmark|method|system|dataset|application|position|web_background|unknown"
+  "paper_type": "survey|benchmark|method|system|dataset|application|position|web_background|unknown",
+  "pdf_url": "string|null",
+  "open_access_url": "string|null",
+  "merged_sources": ["arxiv", "openalex"],
+  "metadata_confidence": 0.88
 }
 ```
 
-### 6.2 EvidenceItem
+### 6.2 FullTextChunk
+
+```json
+{
+  "chunk_id": "string",
+  "paper_id": "string",
+  "text": "string",
+  "source_url": "string",
+  "section_hint": "abstract|introduction|method|experiment|evaluation|discussion|conclusion|body",
+  "token_estimate": 600,
+  "char_start": 0,
+  "char_end": 2600
+}
+```
+
+### 6.3 PaperReadingNote
+
+```json
+{
+  "note_id": "string",
+  "paper_id": "string",
+  "status": "full_text|abstract_fallback|llm_full_text|llm_abstract",
+  "summary": "string",
+  "methods": ["string"],
+  "experiments": ["string"],
+  "limitations": ["string"],
+  "future_work": ["string"],
+  "evidence_chunk_ids": ["ft-paper-1"],
+  "source": "full_text|abstract|llm",
+  "fallback_reason": "string"
+}
+```
+
+### 6.4 SnowballRecord
+
+```json
+{
+  "seed_paper_id": "openalex:W123",
+  "direction": "backward|forward",
+  "added_paper_ids": ["openalex:W456"],
+  "query_url": "string",
+  "fallback_reason": "string"
+}
+```
+
+### 6.5 EvidenceItem
 
 ```json
 {
@@ -363,7 +424,7 @@ def write_report(
 }
 ```
 
-### 6.3 ClaimRecord
+### 6.6 ClaimRecord
 
 ```json
 {
@@ -374,7 +435,7 @@ def write_report(
 }
 ```
 
-### 6.4 CitationCheck
+### 6.7 CitationCheck
 
 ```json
 {
@@ -415,6 +476,12 @@ def write_report(
 | source_diversity | 候选来源多样性 |
 | paper_type_diversity | 核心论文类型多样性 |
 | evidence_matrix_coverage | Evidence Matrix 覆盖核心论文比例 |
+| reading_note_coverage | PaperReadingNote 覆盖核心论文比例 |
+| full_text_chunk_count | 公开全文解析得到的 chunk 数量 |
+| full_text_success_rate | 尝试全文读取的论文中成功读取比例 |
+| snowball_record_count | 引用雪球检索记录数量 |
+| snowball_added_candidate_count | 引用雪球新增候选论文数量 |
+| research_memory_count | 本轮生成的研究记忆条目数量 |
 | coverage_gap_count | 覆盖检测剩余缺口数 |
 | query_gap_recovery | 覆盖缺口补搜恢复指标 |
 | refine_topic | 是否启用模糊主题修正 |

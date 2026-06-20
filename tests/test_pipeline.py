@@ -30,7 +30,9 @@ def test_run_research_offline_generates_report() -> None:
     assert "## 8. 主要结论与证据" in report
     assert "## 11. 参考文献" in report
     assert "Evidence Matrix" in report
-    assert result.metrics["evidence_count"] == 6
+    assert result.metrics["evidence_count"] >= 6
+    assert result.metrics["reading_note_coverage"] == 1.0
+    assert result.metrics["full_text_chunk_count"] == 0
     assert result.metrics["overall_score"] > 80
     assert result.metrics["claim_evidence_coverage"] == 1.0
     assert result.metrics["candidate_limit"] == 18
@@ -51,6 +53,7 @@ def test_run_research_offline_generates_report() -> None:
     assert "Candidate limit" in process
     assert "Candidate year range" in process
     assert "Information Compression Strategy" in process
+    assert "Full-Text Reading" in process
     assert "DEEPSEEK_API_KEY" not in process
     assert re.search(r"sk-[A-Za-z0-9]{16,}", process) is None
 

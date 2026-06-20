@@ -6,7 +6,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem
+from .models import (
+    CitationCheck,
+    ClaimRecord,
+    EvidenceItem,
+    FullTextChunk,
+    PaperReadingNote,
+    PaperRecord,
+    QueryItem,
+    ResearchMemoryItem,
+    SnowballRecord,
+)
 from .state import ResearchState
 
 
@@ -46,6 +56,22 @@ def _restore_evidence(items: Any) -> list[EvidenceItem]:
     return [EvidenceItem(**item) for item in items or [] if isinstance(item, dict)]
 
 
+def _restore_full_text_chunks(items: Any) -> list[FullTextChunk]:
+    return [FullTextChunk(**item) for item in items or [] if isinstance(item, dict)]
+
+
+def _restore_reading_notes(items: Any) -> list[PaperReadingNote]:
+    return [PaperReadingNote(**item) for item in items or [] if isinstance(item, dict)]
+
+
+def _restore_snowball_records(items: Any) -> list[SnowballRecord]:
+    return [SnowballRecord(**item) for item in items or [] if isinstance(item, dict)]
+
+
+def _restore_research_memory(items: Any) -> list[ResearchMemoryItem]:
+    return [ResearchMemoryItem(**item) for item in items or [] if isinstance(item, dict)]
+
+
 def _restore_claims(items: Any) -> list[ClaimRecord]:
     return [ClaimRecord(**item) for item in items or [] if isinstance(item, dict)]
 
@@ -63,6 +89,14 @@ def restore_state(payload: dict[str, Any]) -> ResearchState:
             state[key] = _restore_papers(state.get(key))
     if "evidence_items" in state:
         state["evidence_items"] = _restore_evidence(state.get("evidence_items"))
+    if "full_text_chunks" in state:
+        state["full_text_chunks"] = _restore_full_text_chunks(state.get("full_text_chunks"))
+    if "reading_notes" in state:
+        state["reading_notes"] = _restore_reading_notes(state.get("reading_notes"))
+    if "snowball_records" in state:
+        state["snowball_records"] = _restore_snowball_records(state.get("snowball_records"))
+    if "research_memory" in state:
+        state["research_memory"] = _restore_research_memory(state.get("research_memory"))
     if "claims" in state:
         state["claims"] = _restore_claims(state.get("claims"))
     if "citation_checks" in state:

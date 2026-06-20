@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem
+from .models import (
+    CitationCheck,
+    ClaimRecord,
+    EvidenceItem,
+    FullTextChunk,
+    PaperReadingNote,
+    PaperRecord,
+    QueryItem,
+    ResearchMemoryItem,
+    SnowballRecord,
+)
 
 
 class ResearchState(TypedDict, total=False):
@@ -50,6 +60,20 @@ class ResearchState(TypedDict, total=False):
     corpus_profile: dict[str, Any]
     coverage_gaps: list[dict[str, Any]]
     expansion_rounds: list[dict[str, Any]]
+    snowball: str
+    snowball_records: list[SnowballRecord]
+    metadata_enrichment: dict[str, Any]
+    read_depth: str
+    max_fulltext_papers: int
+    reading_budget_chars: int
+    reading_budget: dict[str, Any]
+    max_expansion_rounds: int
+    full_text_chunks: list[FullTextChunk]
+    reading_notes: list[PaperReadingNote]
+    question_synthesis: list[dict[str, Any]]
+    global_synthesis: dict[str, Any]
+    research_memory: list[ResearchMemoryItem]
+    summary_style: str
     evidence_items: list[EvidenceItem]
     evidence_matrix: list[dict[str, Any]]
     claim_graph: list[dict[str, Any]]

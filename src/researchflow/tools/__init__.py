@@ -2,7 +2,12 @@
 
 from .arxiv import ArxivSearchError, parse_arxiv_feed, search_arxiv
 from .crossref import CrossrefSearchError, parse_crossref_response, search_crossref
-from .openalex import OpenAlexSearchError, parse_openalex_response, search_openalex
+from .openalex import (
+    OpenAlexSearchError,
+    parse_openalex_response,
+    search_openalex,
+    search_openalex_snowball,
+)
 from .semantic_scholar import (
     SemanticScholarSearchError,
     parse_semantic_scholar_response,
@@ -24,6 +29,7 @@ __all__ = [
     "search_arxiv",
     "search_crossref",
     "search_openalex",
+    "search_openalex_snowball",
     "search_semantic_scholar",
     "search_tavily",
 ]

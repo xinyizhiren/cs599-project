@@ -85,6 +85,42 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["off", "tavily"],
         help="Optional web search provider for mixed/web source. Defaults to tavily.",
     )
+    run_parser.add_argument(
+        "--read-depth",
+        default="abstract",
+        choices=["abstract", "auto", "fulltext"],
+        help="Open full-text reading mode. Defaults to abstract.",
+    )
+    run_parser.add_argument(
+        "--max-fulltext-papers",
+        type=int,
+        default=6,
+        help="Maximum selected papers to read through public full text.",
+    )
+    run_parser.add_argument(
+        "--reading-budget-chars",
+        type=int,
+        default=80000,
+        help="Character budget for full-text chunking and reading notes.",
+    )
+    run_parser.add_argument(
+        "--snowball",
+        default="none",
+        choices=["none", "backward", "forward", "both"],
+        help="OpenAlex citation snowball expansion mode.",
+    )
+    run_parser.add_argument(
+        "--expansion-rounds",
+        type=int,
+        default=1,
+        help="Number of coverage-gap expansion rounds. Defaults to 1.",
+    )
+    run_parser.add_argument(
+        "--summary-style",
+        default="comprehensive",
+        choices=["brief", "comprehensive"],
+        help="Summary artifact detail level. Defaults to comprehensive.",
+    )
     run_parser.add_argument("--output", default=None, help="Markdown report output path.")
     run_parser.add_argument(
         "--process-output",
@@ -155,6 +191,12 @@ def main(argv: list[str] | None = None) -> int:
             breadth=args.breadth,
             report_style=args.report_style,
             web_provider=args.web_provider,
+            read_depth=args.read_depth,
+            max_fulltext_papers=args.max_fulltext_papers,
+            reading_budget_chars=args.reading_budget_chars,
+            snowball=args.snowball,
+            expansion_rounds=args.expansion_rounds,
+            summary_style=args.summary_style,
         )
         print(f"Task ID: {result.task_id}")
         print(f"Status: {result.status}")

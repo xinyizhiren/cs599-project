@@ -16,9 +16,17 @@ from typing import Any
 from .evaluation import evaluate_state, render_evaluation_markdown
 from .graph import NodeSpec, run_research_graph
 from .llm import LLMError, build_llm_client
-from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem, ResearchResult
+from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem, ResearchResult, SnowballRecord
 from .offline_data import OFFLINE_PAPERS
 from .planner import build_query_tree, normalize_topic, plan_queries, topic_terms
+from .reading import (
+    build_global_synthesis,
+    build_question_synthesis,
+    build_reading_notes,
+    build_research_memory,
+    evidence_from_reading_notes,
+    read_selected_full_texts,
+)
 from .report import render_full_report, render_process_markdown, render_report, render_summary_report
 from .session import save_session
 from .state import ResearchState
@@ -31,6 +39,7 @@ from .tools import (
     search_arxiv,
     search_crossref,
     search_openalex,
+    search_openalex_snowball,
     search_semantic_scholar,
     search_tavily,
 )
@@ -181,6 +190,8 @@ RAG_LENS_DIMENSIONS: dict[str, tuple[str, ...]] = {
 DEFAULT_CANDIDATE_MULTIPLIER = 8
 DEFAULT_FROM_YEAR = 2020
 DEFAULT_LLM_BATCH_CHARS = 9000
+DEFAULT_READING_BUDGET_CHARS = 80000
+DEFAULT_MAX_FULLTEXT_PAPERS = 6
 LIVE_QUERY_PLAN_LIMIT = 6
 ACADEMIC_SOURCES = {"arxiv", "semantic_scholar", "crossref", "openalex"}
 LIVE_SOURCES = ACADEMIC_SOURCES | {"web"}
@@ -272,7 +283,12 @@ def score_paper(paper: PaperRecord, terms: list[str], topic: str = "") -> float:
         + citation_score
         + source_quality_bonus(paper.source)
         + paper_type_bonus(inferred_type, topic)
+        + min(1.0, paper.metadata_confidence or metadata_confidence(paper))
     )
+    if paper.pdf_url or paper.open_access_url:
+        score += 0.8
+    if any(str(source).startswith("snowball:") for source in paper.merged_sources):
+        score += 0.9
 
     if is_rag_topic(topic):
         combined = f"{title} {abstract}"
@@ -334,19 +350,66 @@ def filter_papers_by_year(papers: list[PaperRecord], from_year: int | None) -> l
 
 
 def dedupe_papers(papers: list[PaperRecord]) -> list[PaperRecord]:
-    seen: set[str] = set()
+    seen: dict[str, PaperRecord] = {}
     unique: list[PaperRecord] = []
     for paper in papers:
         key, title_key = paper_dedupe_keys(paper)
-        if title_key and title_key in seen:
+        existing = seen.get(key) or (seen.get(title_key) if title_key else None)
+        if existing:
+            merge_paper_metadata(existing, paper)
             continue
-        if key in seen:
-            continue
-        seen.add(key)
+        seen[key] = paper
         if title_key:
-            seen.add(title_key)
+            seen[title_key] = paper
+        if not paper.merged_sources:
+            paper.merged_sources = [paper.source]
+        if not paper.metadata_confidence:
+            paper.metadata_confidence = metadata_confidence(paper)
         unique.append(paper)
     return unique
+
+
+def merge_paper_metadata(target: PaperRecord, source: PaperRecord) -> PaperRecord:
+    if not target.doi and source.doi:
+        target.doi = source.doi
+    if not target.arxiv_id and source.arxiv_id:
+        target.arxiv_id = source.arxiv_id
+    if not target.pdf_url and source.pdf_url:
+        target.pdf_url = source.pdf_url
+    if not target.open_access_url and source.open_access_url:
+        target.open_access_url = source.open_access_url
+    if source.citation_count > target.citation_count:
+        target.citation_count = source.citation_count
+    if len(source.abstract or "") > len(target.abstract or ""):
+        target.abstract = source.abstract
+    if source.authors and target.authors == ["Unknown"]:
+        target.authors = source.authors
+    merged_sources = [*target.merged_sources, target.source, source.source, *source.merged_sources]
+    target.merged_sources = list(dict.fromkeys(item for item in merged_sources if item))
+    target.metadata_confidence = max(
+        target.metadata_confidence,
+        source.metadata_confidence,
+        metadata_confidence(target),
+        metadata_confidence(source),
+    )
+    return target
+
+
+def metadata_confidence(paper: PaperRecord) -> float:
+    score = 0.35
+    if paper.title:
+        score += 0.1
+    if paper.abstract and "not available" not in paper.abstract.lower():
+        score += 0.15
+    if paper.doi:
+        score += 0.12
+    if paper.arxiv_id:
+        score += 0.12
+    if paper.pdf_url or paper.open_access_url:
+        score += 0.1
+    if paper.citation_count:
+        score += 0.06
+    return round(min(score, 1.0), 3)
 
 
 def paper_dedupe_keys(paper: PaperRecord) -> tuple[str, str]:
@@ -1536,7 +1599,11 @@ def node_rank_papers(state: ResearchState) -> dict[str, Any]:
 
 
 def node_expand_search(state: ResearchState) -> dict[str, Any]:
-    if state.get("requested_source") == "offline" or not state.get("coverage_gaps"):
+    if (
+        state.get("requested_source") == "offline"
+        or not state.get("coverage_gaps")
+        or int(state.get("max_expansion_rounds", 1)) <= 0
+    ):
         return {"expansion_rounds": []}
 
     effective_topic = state.get("effective_topic", state["topic"])
@@ -1618,7 +1685,157 @@ def node_expand_search(state: ResearchState) -> dict[str, Any]:
     }
 
 
+def _openalex_seed_ids(papers: list[PaperRecord], limit: int = 4) -> list[str]:
+    ids: list[str] = []
+    for paper in papers:
+        if paper.paper_id.startswith("openalex:"):
+            ids.append(paper.paper_id.removeprefix("openalex:"))
+        elif "openalex.org/" in paper.url:
+            ids.append(paper.url.rstrip("/").rsplit("/", 1)[-1])
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+def node_snowball_search(state: ResearchState) -> dict[str, Any]:
+    direction = str(state.get("snowball", "none"))
+    if direction == "none" or state.get("requested_source") == "offline":
+        return {
+            "snowball_records": [],
+            "metadata_enrichment": {
+                "enabled": direction != "none",
+                "added_candidates": 0,
+                "reason": "Snowball search is disabled or offline mode is active.",
+            },
+        }
+
+    seeds = _openalex_seed_ids(state.get("selected_papers", []))
+    if not seeds:
+        return {
+            "snowball_records": [
+                SnowballRecord(
+                    seed_paper_id="none",
+                    direction=direction,
+                    added_paper_ids=[],
+                    fallback_reason="No OpenAlex seed paper is available for snowball search.",
+                )
+            ],
+            "metadata_enrichment": {
+                "enabled": True,
+                "added_candidates": 0,
+                "reason": "No OpenAlex seed paper is available.",
+            },
+        }
+
+    limit = max(10, min(int(state.get("candidate_limit", 80)) // 2, 60))
+    snowball_papers, raw_records = search_openalex_snowball(
+        seeds,
+        direction=direction,
+        limit=limit,
+        from_year=state.get("from_year"),
+    )
+    searched_papers = filter_papers_by_year(
+        dedupe_papers(list(state.get("searched_papers", [])) + snowball_papers),
+        state.get("from_year"),
+    )
+    effective_topic = state.get("effective_topic", state["topic"])
+    ranked_candidates = rank_all_papers(searched_papers, effective_topic)
+    selected_papers = select_diverse_papers(ranked_candidates, int(state["top_k"]), effective_topic)
+    research_lens = build_research_lens(effective_topic, selected_papers)
+    corpus_profile = build_corpus_profile(
+        effective_topic,
+        ranked_candidates,
+        selected_papers,
+        state.get("from_year"),
+    )
+    coverage_gaps = detect_coverage_gaps(
+        effective_topic,
+        selected_papers,
+        research_lens,
+        corpus_profile.get("temporal_profile", {}),
+    )
+    records = [
+        SnowballRecord(
+            seed_paper_id=str(record.get("seed_paper_id", "")),
+            direction=str(record.get("direction", direction)),
+            added_paper_ids=[str(item) for item in record.get("added_paper_ids", [])],
+            query_url=str(record.get("query_url", "")),
+            fallback_reason=str(record.get("fallback_reason", "")),
+        )
+        for record in raw_records
+    ]
+    added_ids = {paper.paper_id for paper in snowball_papers}
+    actual_sources = expand_source_label(str(state.get("actual_source", "")))
+    if snowball_papers:
+        actual_sources.append("openalex")
+    actual_label = actual_source_label(state.get("selected_sources", []), list(dict.fromkeys(actual_sources)))
+    return {
+        "searched_papers": searched_papers,
+        "ranked_candidates": ranked_candidates,
+        "selected_papers": selected_papers,
+        "research_lens": research_lens,
+        "corpus_profile": corpus_profile,
+        "coverage_gaps": coverage_gaps,
+        "temporal_profile": build_temporal_profile(searched_papers),
+        "actual_source": actual_label or state.get("actual_source", ""),
+        "source_results": build_source_results(searched_papers, actual_label or state.get("actual_source", ""), state.get("fallback_reason", "")),
+        "snowball_records": records,
+        "metadata_enrichment": {
+            "enabled": True,
+            "direction": direction,
+            "seed_count": len(seeds),
+            "added_candidates": len(added_ids),
+            "record_count": len(records),
+            "metadata_confidence_avg": round(
+                sum(metadata_confidence(paper) for paper in searched_papers) / max(len(searched_papers), 1),
+                3,
+            ),
+        },
+    }
+
+
+def node_read_full_text(state: ResearchState) -> dict[str, Any]:
+    read_depth = str(state.get("read_depth", "abstract"))
+    chunks, reading_budget = read_selected_full_texts(
+        state.get("selected_papers", []),
+        read_depth=read_depth,
+        max_fulltext_papers=int(state.get("max_fulltext_papers", DEFAULT_MAX_FULLTEXT_PAPERS)),
+        reading_budget_chars=int(state.get("reading_budget_chars", DEFAULT_READING_BUDGET_CHARS)),
+    )
+    notes, note_llm_used, note_fallback_reason = build_reading_notes(
+        state.get("selected_papers", []),
+        chunks,
+        provider=state.get("llm_provider", "off"),
+    )
+    research_questions = [
+        branch.get("question", "")
+        for branch in state.get("query_tree", {}).get("branches", [])
+        if branch.get("question")
+    ]
+    llm_fallback_reason = state.get("llm_fallback_reason", "")
+    if note_fallback_reason:
+        reason = f"Reading-note fallback: {note_fallback_reason}"
+        llm_fallback_reason = f"{llm_fallback_reason}; {reason}" if llm_fallback_reason else reason
+    return {
+        "full_text_chunks": chunks,
+        "reading_notes": notes,
+        "reading_budget": reading_budget,
+        "question_synthesis": build_question_synthesis(research_questions, notes),
+        "global_synthesis": build_global_synthesis(notes),
+        "llm_used": bool(state.get("llm_used", False) or note_llm_used),
+        "llm_fallback_reason": llm_fallback_reason,
+    }
+
+
 def node_extract_evidence(state: ResearchState) -> dict[str, Any]:
+    if state.get("reading_notes"):
+        return {
+            "evidence_items": evidence_from_reading_notes(state["reading_notes"]),
+            "llm_chunk_count": state.get("llm_chunk_count", 0),
+            "llm_used": bool(state.get("llm_used", False)),
+            "llm_fallback_reason": state.get("llm_fallback_reason", ""),
+        }
+
     provider = state.get("llm_provider", "off")
     if provider == "deepseek":
         try:
@@ -1665,6 +1882,7 @@ def node_synthesize_claims(state: ResearchState) -> dict[str, Any]:
             state["evidence_items"],
         ),
         "claim_graph": build_claim_graph(claims, state["evidence_items"], state["selected_papers"]),
+        "research_memory": build_research_memory(state.get("reading_notes", []), state["evidence_items"]),
     }
 
 
@@ -1727,6 +1945,8 @@ RESEARCH_NODES: list[NodeSpec] = [
     ("search_papers", node_search_papers),
     ("rank_papers", node_rank_papers),
     ("expand_search", node_expand_search),
+    ("snowball_search", node_snowball_search),
+    ("read_full_text", node_read_full_text),
     ("extract_evidence", node_extract_evidence),
     ("synthesize_claims", node_synthesize_claims),
     ("check_citations", node_check_citations),
@@ -1754,6 +1974,12 @@ def run_research(
     breadth: int = 4,
     report_style: str = "full",
     web_provider: str = "tavily",
+    read_depth: str = "abstract",
+    max_fulltext_papers: int = DEFAULT_MAX_FULLTEXT_PAPERS,
+    reading_budget_chars: int = DEFAULT_READING_BUDGET_CHARS,
+    snowball: str = "none",
+    expansion_rounds: int = 1,
+    summary_style: str = "comprehensive",
 ) -> ResearchResult:
     if not topic.strip():
         raise ValueError("Research topic cannot be empty.")
@@ -1781,6 +2007,20 @@ def run_research(
         "requested_source": requested_source,
         "selected_sources": selected_sources,
         "web_provider": web_provider,
+        "read_depth": read_depth if read_depth in {"abstract", "auto", "fulltext"} else "abstract",
+        "max_fulltext_papers": max(0, max_fulltext_papers),
+        "reading_budget_chars": max(1000, reading_budget_chars),
+        "reading_budget": {},
+        "snowball": snowball if snowball in {"none", "backward", "forward", "both"} else "none",
+        "snowball_records": [],
+        "metadata_enrichment": {},
+        "full_text_chunks": [],
+        "reading_notes": [],
+        "question_synthesis": [],
+        "global_synthesis": {},
+        "research_memory": [],
+        "summary_style": summary_style if summary_style in {"brief", "comprehensive"} else "comprehensive",
+        "max_expansion_rounds": max(0, expansion_rounds),
         "report_style": report_style,
         "output_path": output,
         "summary_output_path": summary_output,
@@ -1878,6 +2118,14 @@ def run_research(
                 "corpus_profile": _serialize(final_state.get("corpus_profile", {})),
                 "coverage_gaps": _serialize(final_state.get("coverage_gaps", [])),
                 "expansion_rounds": _serialize(final_state.get("expansion_rounds", [])),
+                "snowball_records": _serialize(final_state.get("snowball_records", [])),
+                "metadata_enrichment": _serialize(final_state.get("metadata_enrichment", {})),
+                "reading_budget": _serialize(final_state.get("reading_budget", {})),
+                "full_text_chunks": _serialize(final_state.get("full_text_chunks", [])),
+                "reading_notes": _serialize(final_state.get("reading_notes", [])),
+                "question_synthesis": _serialize(final_state.get("question_synthesis", [])),
+                "global_synthesis": _serialize(final_state.get("global_synthesis", {})),
+                "research_memory": _serialize(final_state.get("research_memory", [])),
                 "temporal_profile": _serialize(final_state.get("temporal_profile", {})),
                 "evidence_items": _serialize(final_state.get("evidence_items", [])),
                 "evidence_matrix": _serialize(final_state.get("evidence_matrix", [])),

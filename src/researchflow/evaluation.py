@@ -107,6 +107,22 @@ def evidence_matrix_coverage(matrix: list[dict[str, Any]], selected: list[PaperR
     return _safe_divide(len(covered), len(selected))
 
 
+def reading_note_coverage(notes: list[Any], selected: list[PaperRecord]) -> float:
+    if not selected:
+        return 0.0
+    covered = {
+        str(note.get("paper_id", "") if isinstance(note, dict) else getattr(note, "paper_id", ""))
+        for note in notes
+    }
+    return _safe_divide(len(covered), len(selected))
+
+
+def full_text_success_rate(reading_budget: dict[str, Any]) -> float:
+    attempted = int(reading_budget.get("attempted_papers", 0) or 0)
+    successful = int(reading_budget.get("successful_papers", 0) or 0)
+    return _safe_divide(successful, attempted)
+
+
 def _actual_sources(actual_source: str) -> set[str]:
     if actual_source == "hybrid":
         return {"hybrid", "arxiv", "semantic_scholar", "crossref", "openalex"}
@@ -128,6 +144,11 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     research_lens = state.get("research_lens", {})
     temporal_profile = state.get("temporal_profile", {})
     evidence_matrix = state.get("evidence_matrix", [])
+    reading_notes = state.get("reading_notes", [])
+    full_text_chunks = state.get("full_text_chunks", [])
+    reading_budget = state.get("reading_budget", {})
+    snowball_records = state.get("snowball_records", [])
+    research_memory = state.get("research_memory", [])
     coverage_gaps = state.get("coverage_gaps", [])
     expansion_rounds = state.get("expansion_rounds", [])
 
@@ -164,6 +185,8 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
     citation_rate = citation_validity(checks)
     evidence_coverage = claim_evidence_coverage(claims)
     matrix_coverage = evidence_matrix_coverage(evidence_matrix, selected)
+    note_coverage = reading_note_coverage(reading_notes, selected)
+    full_text_rate = full_text_success_rate(reading_budget)
     unsupported_claim_rate = 1.0 - evidence_coverage
     hallucinated_refs = hallucinated_reference_count(selected, report)
     evidence_score = 25 * (
@@ -192,7 +215,7 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         + (readability * 0.15)
     )
 
-    expected_nodes = 8
+    expected_nodes = 11
     actual_sources = _actual_sources(str(state.get("actual_source", "")))
     tool_call_correctness = (
         1.0
@@ -228,6 +251,15 @@ def evaluate_state(state: ResearchState) -> dict[str, Any]:
         "citation_check_pass_rate": _round(citation_rate),
         "claim_evidence_coverage": _round(evidence_coverage),
         "evidence_matrix_coverage": _round(matrix_coverage),
+        "reading_note_coverage": _round(note_coverage),
+        "full_text_chunk_count": len(full_text_chunks),
+        "full_text_success_rate": _round(full_text_rate),
+        "snowball_record_count": len(snowball_records),
+        "snowball_added_candidate_count": sum(
+            len(record.get("added_paper_ids", []) if isinstance(record, dict) else getattr(record, "added_paper_ids", []))
+            for record in snowball_records
+        ),
+        "research_memory_count": len(research_memory),
         "unsupported_claim_rate": _round(unsupported_claim_rate),
         "hallucinated_reference_count": hallucinated_refs,
         "report_section_completeness": _round(completeness),

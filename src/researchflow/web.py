@@ -26,6 +26,8 @@ from .models import ResearchResult
 from .pipeline import (
     DEFAULT_CANDIDATE_MULTIPLIER,
     DEFAULT_FROM_YEAR,
+    DEFAULT_MAX_FULLTEXT_PAPERS,
+    DEFAULT_READING_BUDGET_CHARS,
     RESEARCH_NODES,
     _serialize,
     candidate_limit_for,
@@ -81,6 +83,18 @@ STEP_DEFINITIONS: list[dict[str, str]] = [
         "name": "Expand Search",
         "label": "覆盖补搜",
         "description": "Recover structural coverage gaps with one focused expansion search.",
+    },
+    {
+        "id": "snowball_search",
+        "name": "Snowball Search",
+        "label": "引用雪球",
+        "description": "Expand from OpenAlex seed papers through references and citing papers.",
+    },
+    {
+        "id": "read_full_text",
+        "name": "Read Full Text",
+        "label": "全文阅读",
+        "description": "Read public full text, chunk it, and build paper reading notes.",
     },
     {
         "id": "extract_evidence",
@@ -175,6 +189,15 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
     report_style = str(payload.get("report_style", "full") or "full").strip()
     if report_style not in {"full", "summary", "course"}:
         report_style = "full"
+    read_depth = str(payload.get("read_depth", "abstract") or "abstract").strip()
+    if read_depth not in {"abstract", "auto", "fulltext"}:
+        read_depth = "abstract"
+    snowball = str(payload.get("snowball", "none") or "none").strip()
+    if snowball not in {"none", "backward", "forward", "both"}:
+        snowball = "none"
+    summary_style = str(payload.get("summary_style", "comprehensive") or "comprehensive").strip()
+    if summary_style not in {"brief", "comprehensive"}:
+        summary_style = "comprehensive"
 
     from_year = _safe_int(payload.get("from_year"), DEFAULT_FROM_YEAR, 0, 2100)
     return {
@@ -187,6 +210,22 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
         "breadth": _safe_int(payload.get("breadth"), 4, 1, 8),
         "report_style": report_style,
         "web_provider": web_provider,
+        "read_depth": read_depth,
+        "max_fulltext_papers": _safe_int(
+            payload.get("max_fulltext_papers"),
+            DEFAULT_MAX_FULLTEXT_PAPERS,
+            0,
+            20,
+        ),
+        "reading_budget_chars": _safe_int(
+            payload.get("reading_budget_chars"),
+            DEFAULT_READING_BUDGET_CHARS,
+            1000,
+            400000,
+        ),
+        "snowball": snowball,
+        "expansion_rounds": _safe_int(payload.get("expansion_rounds"), 1, 0, 3),
+        "summary_style": summary_style,
         "candidate_multiplier": _safe_int(
             payload.get("candidate_multiplier"),
             DEFAULT_CANDIDATE_MULTIPLIER,
@@ -225,6 +264,20 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
         "requested_source": requested_source,
         "selected_sources": selected_sources,
         "web_provider": request.get("web_provider", "tavily"),
+        "read_depth": request.get("read_depth", "abstract"),
+        "max_fulltext_papers": int(request.get("max_fulltext_papers", DEFAULT_MAX_FULLTEXT_PAPERS)),
+        "reading_budget_chars": int(request.get("reading_budget_chars", DEFAULT_READING_BUDGET_CHARS)),
+        "reading_budget": {},
+        "snowball": request.get("snowball", "none"),
+        "snowball_records": [],
+        "metadata_enrichment": {},
+        "full_text_chunks": [],
+        "reading_notes": [],
+        "question_synthesis": [],
+        "global_synthesis": {},
+        "research_memory": [],
+        "max_expansion_rounds": int(request.get("expansion_rounds", 1)),
+        "summary_style": request.get("summary_style", "comprehensive"),
         "report_style": request.get("report_style", "full"),
         "output_path": str(run_dir / f"{slug}.md"),
         "summary_output_path": str(run_dir / "summary.md"),
@@ -301,6 +354,34 @@ def _summarize_node(node_name: str, state: ResearchState, update: dict[str, Any]
             },
         )
 
+    if node_name == "snowball_search":
+        records = state.get("snowball_records", [])
+        added = sum(
+            len(item.get("added_paper_ids", []) if isinstance(item, dict) else getattr(item, "added_paper_ids", []))
+            for item in records
+        )
+        return (
+            f"Snowball records: {len(records)}; added {added} related candidates.",
+            {
+                "snowball": state.get("snowball", "none"),
+                "record_count": len(records),
+                "added_candidates": added,
+            },
+        )
+
+    if node_name == "read_full_text":
+        chunks = state.get("full_text_chunks", [])
+        notes = state.get("reading_notes", [])
+        budget = state.get("reading_budget", {})
+        return (
+            f"Built {len(notes)} reading notes from {len(chunks)} full-text chunks.",
+            {
+                "read_depth": state.get("read_depth", "abstract"),
+                "successful_papers": budget.get("successful_papers", 0),
+                "failed_papers": budget.get("failed_papers", 0),
+            },
+        )
+
     if node_name == "extract_evidence":
         evidence = state.get("evidence_items", [])
         return (
@@ -364,6 +445,14 @@ def _snapshot_state(state: ResearchState) -> dict[str, Any]:
         "research_lens": _serialize(state.get("research_lens", {})),
         "coverage_gaps": _serialize(state.get("coverage_gaps", [])),
         "expansion_rounds": _serialize(state.get("expansion_rounds", [])),
+        "snowball_records": _serialize(state.get("snowball_records", [])),
+        "metadata_enrichment": _serialize(state.get("metadata_enrichment", {})),
+        "reading_budget": _serialize(state.get("reading_budget", {})),
+        "full_text_chunks": _serialize(state.get("full_text_chunks", []))[:30],
+        "reading_notes": _serialize(state.get("reading_notes", [])),
+        "question_synthesis": _serialize(state.get("question_synthesis", [])),
+        "global_synthesis": _serialize(state.get("global_synthesis", {})),
+        "research_memory": _serialize(state.get("research_memory", [])),
         "evidence_items": _serialize(state.get("evidence_items", [])),
         "evidence_matrix": _serialize(state.get("evidence_matrix", []))[:40],
         "claim_graph": _serialize(state.get("claim_graph", [])),
@@ -469,6 +558,12 @@ def _request_from_state(state: ResearchState) -> dict[str, Any]:
         "breadth": state.get("breadth", 4),
         "report_style": state.get("report_style", "full"),
         "web_provider": state.get("web_provider", "tavily"),
+        "read_depth": state.get("read_depth", "abstract"),
+        "max_fulltext_papers": state.get("max_fulltext_papers", DEFAULT_MAX_FULLTEXT_PAPERS),
+        "reading_budget_chars": state.get("reading_budget_chars", DEFAULT_READING_BUDGET_CHARS),
+        "snowball": state.get("snowball", "none"),
+        "expansion_rounds": state.get("max_expansion_rounds", 1),
+        "summary_style": state.get("summary_style", "comprehensive"),
         "candidate_multiplier": state.get("candidate_multiplier", DEFAULT_CANDIDATE_MULTIPLIER),
         "max_candidates": state.get("candidate_limit"),
         "llm": state.get("llm_provider", "off"),
@@ -602,6 +697,10 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
         "breadth": state.get("breadth", 4),
         "report_style": state.get("report_style", "full"),
         "web_provider": state.get("web_provider", "tavily"),
+        "read_depth": state.get("read_depth", "abstract"),
+        "snowball": state.get("snowball", "none"),
+        "max_fulltext_papers": state.get("max_fulltext_papers", 0),
+        "reading_budget_chars": state.get("reading_budget_chars", 0),
         "llm_provider": state.get("llm_provider", "off"),
         "refine_topic": bool(state.get("refine_topic", False)),
     }
@@ -624,6 +723,10 @@ def _record_understanding(job_id: str, state: ResearchState) -> None:
                 "breadth",
                 "report_style",
                 "web_provider",
+                "read_depth",
+                "snowball",
+                "max_fulltext_papers",
+                "reading_budget_chars",
                 "llm_provider",
                 "refine_topic",
             ],
@@ -729,6 +832,14 @@ def _run_web_job(job_id: str) -> None:
                 "corpus_profile": _serialize(state.get("corpus_profile", {})),
                 "coverage_gaps": _serialize(state.get("coverage_gaps", [])),
                 "expansion_rounds": _serialize(state.get("expansion_rounds", [])),
+                "snowball_records": _serialize(state.get("snowball_records", [])),
+                "metadata_enrichment": _serialize(state.get("metadata_enrichment", {})),
+                "reading_budget": _serialize(state.get("reading_budget", {})),
+                "full_text_chunks": _serialize(state.get("full_text_chunks", [])),
+                "reading_notes": _serialize(state.get("reading_notes", [])),
+                "question_synthesis": _serialize(state.get("question_synthesis", [])),
+                "global_synthesis": _serialize(state.get("global_synthesis", {})),
+                "research_memory": _serialize(state.get("research_memory", [])),
                 "temporal_profile": _serialize(state.get("temporal_profile", {})),
                 "evidence_items": _serialize(state.get("evidence_items", [])),
                 "evidence_matrix": _serialize(state.get("evidence_matrix", [])),

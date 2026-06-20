@@ -83,6 +83,36 @@ def _primary_url(item: dict[str, Any], doi: str | None) -> str:
     return f"https://doi.org/{doi}" if doi else ""
 
 
+def _location_url(location: Any, key: str) -> str:
+    if not isinstance(location, dict):
+        return ""
+    return str(location.get(key) or "").strip()
+
+
+def _open_access_urls(item: dict[str, Any]) -> tuple[str | None, str | None]:
+    primary_location = item.get("primary_location")
+    pdf_url = _location_url(primary_location, "pdf_url")
+    landing_url = _location_url(primary_location, "landing_page_url")
+
+    for location in item.get("locations") or []:
+        if not pdf_url:
+            pdf_url = _location_url(location, "pdf_url")
+        if not landing_url:
+            landing_url = _location_url(location, "landing_page_url")
+        if pdf_url and landing_url:
+            break
+
+    open_access = item.get("open_access")
+    if isinstance(open_access, dict):
+        oa_url = str(open_access.get("oa_url") or "").strip()
+        if oa_url and not pdf_url and oa_url.lower().endswith(".pdf"):
+            pdf_url = oa_url
+        if oa_url and not landing_url:
+            landing_url = oa_url
+
+    return pdf_url or None, (pdf_url or landing_url or None)
+
+
 def _concept_summary(item: dict[str, Any]) -> str:
     concepts = item.get("concepts")
     if not isinstance(concepts, list):
@@ -137,6 +167,7 @@ def parse_openalex_response(json_text: str | dict[str, Any], limit: int | None =
                 arxiv_id = arxiv_url.rstrip("/").rsplit("/", 1)[-1]
 
         paper_id = f"openalex:{openalex_id.rstrip('/').rsplit('/', 1)[-1]}"
+        pdf_url, open_access_url = _open_access_urls(item)
         papers.append(
             PaperRecord(
                 paper_id=paper_id,
@@ -149,6 +180,10 @@ def parse_openalex_response(json_text: str | dict[str, Any], limit: int | None =
                 arxiv_id=arxiv_id,
                 source="openalex",
                 citation_count=_as_int(item.get("cited_by_count")),
+                pdf_url=pdf_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else None),
+                open_access_url=open_access_url or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else None),
+                merged_sources=["openalex"],
+                metadata_confidence=0.88 if doi or arxiv_id or pdf_url else 0.72,
             )
         )
         if limit is not None and len(papers) >= limit:
@@ -180,6 +215,179 @@ def build_openalex_query_url(
     if mailto:
         params["mailto"] = mailto
     return f"{OPENALEX_WORKS_URL}?{urllib.parse.urlencode(params)}"
+
+
+def _work_id(value: str) -> str:
+    clean = str(value or "").strip()
+    if not clean:
+        return ""
+    if clean.startswith("openalex:"):
+        return clean.split(":", 1)[1]
+    if "openalex.org/" in clean:
+        return clean.rstrip("/").rsplit("/", 1)[-1]
+    return clean
+
+
+def build_openalex_filter_url(
+    filter_value: str,
+    limit: int = 20,
+    from_year: int | None = None,
+) -> str:
+    params = {
+        "filter": filter_value,
+        "per-page": str(max(1, min(limit, 100))),
+        "sort": "cited_by_count:desc",
+    }
+    filters: list[str] = [filter_value]
+    if from_year and from_year > 0:
+        filters.append(f"from_publication_date:{from_year}-01-01")
+    params["filter"] = ",".join(filters)
+    mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
+    if mailto:
+        params["mailto"] = mailto
+    return f"{OPENALEX_WORKS_URL}?{urllib.parse.urlencode(params)}"
+
+
+def fetch_openalex_work(
+    work_id: str,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    clean_id = _work_id(work_id)
+    if not clean_id:
+        raise OpenAlexSearchError("OpenAlex work id cannot be empty.")
+    url = f"{OPENALEX_WORKS_URL}/{urllib.parse.quote(clean_id, safe='')}"
+    mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
+    if mailto:
+        url = f"{url}?{urllib.parse.urlencode({'mailto': mailto})}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8", errors="replace"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise OpenAlexSearchError(f"OpenAlex work fetch failed: {exc}") from exc
+
+
+def search_openalex_filter(
+    filter_value: str,
+    limit: int = 20,
+    timeout: float = 20.0,
+    from_year: int | None = None,
+) -> list[PaperRecord]:
+    load_local_env()
+    request = urllib.request.Request(
+        build_openalex_filter_url(filter_value, limit=limit, from_year=from_year),
+        headers={"User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            json_text = response.read().decode("utf-8", errors="replace")
+    except (OSError, urllib.error.URLError) as exc:
+        raise OpenAlexSearchError(f"OpenAlex filtered request failed: {exc}") from exc
+    return parse_openalex_response(json_text, limit=limit)
+
+
+def search_openalex_cited_by(
+    work_id: str,
+    limit: int = 20,
+    timeout: float = 20.0,
+    from_year: int | None = None,
+) -> list[PaperRecord]:
+    clean_id = _work_id(work_id)
+    if not clean_id:
+        return []
+    return search_openalex_filter(
+        f"cites:{clean_id}",
+        limit=limit,
+        timeout=timeout,
+        from_year=from_year,
+    )
+
+
+def search_openalex_references(
+    work_id: str,
+    limit: int = 20,
+    timeout: float = 20.0,
+    from_year: int | None = None,
+) -> list[PaperRecord]:
+    work = fetch_openalex_work(work_id, timeout=timeout)
+    referenced = work.get("referenced_works") or []
+    if not isinstance(referenced, list) or not referenced:
+        return []
+    ids = [_work_id(str(item)) for item in referenced if str(item).strip()]
+    if not ids:
+        return []
+    batches = ids[: max(1, min(limit, 25))]
+    return search_openalex_filter(
+        "openalex:" + "|".join(batches),
+        limit=limit,
+        timeout=timeout,
+        from_year=from_year,
+    )
+
+
+def search_openalex_snowball(
+    seed_work_ids: list[str],
+    direction: str = "both",
+    limit: int = 20,
+    timeout: float = 20.0,
+    from_year: int | None = None,
+) -> tuple[list[PaperRecord], list[dict[str, Any]]]:
+    """Expand OpenAlex seed works through references and citing papers."""
+
+    collected: list[PaperRecord] = []
+    records: list[dict[str, Any]] = []
+    if direction not in {"none", "backward", "forward", "both"}:
+        direction = "none"
+    if direction == "none":
+        return [], []
+
+    per_seed_limit = max(1, min(limit, 20))
+    for seed in seed_work_ids:
+        clean_id = _work_id(seed)
+        if not clean_id:
+            continue
+        for branch in ("backward", "forward"):
+            if direction not in {branch, "both"}:
+                continue
+            try:
+                papers = (
+                    search_openalex_references(
+                        clean_id,
+                        limit=per_seed_limit,
+                        timeout=timeout,
+                        from_year=from_year,
+                    )
+                    if branch == "backward"
+                    else search_openalex_cited_by(
+                        clean_id,
+                        limit=per_seed_limit,
+                        timeout=timeout,
+                        from_year=from_year,
+                    )
+                )
+                for paper in papers:
+                    sources = list(dict.fromkeys([*paper.merged_sources, f"snowball:{branch}"]))
+                    paper.merged_sources = sources
+                    paper.source = "openalex"
+                collected.extend(papers)
+                records.append(
+                    {
+                        "seed_paper_id": f"openalex:{clean_id}",
+                        "direction": branch,
+                        "added_paper_ids": [paper.paper_id for paper in papers],
+                        "fallback_reason": "",
+                    }
+                )
+            except OpenAlexSearchError as exc:
+                records.append(
+                    {
+                        "seed_paper_id": f"openalex:{clean_id}",
+                        "direction": branch,
+                        "added_paper_ids": [],
+                        "fallback_reason": str(exc),
+                    }
+                )
+    return collected[:limit], records
 
 
 def search_openalex(

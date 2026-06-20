@@ -29,8 +29,8 @@ CLI/API Entry
 | --- | --- |
 | CLI/API Entry | 接收用户主题、Top-K、输出路径等参数 |
 | ResearchGraph Orchestrator | 维护任务状态、节点路由、失败重试、trace 和 fallback |
-| Agent Nodes | Topic Refiner、Query Planner、Searcher、Ranker、Gap Expander、Extractor、Synthesizer、Checker、Reporter |
-| Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、Tavily Web、PDF parser、Markdown writer |
+| Agent Nodes | Topic Refiner、Query Planner、Searcher、Ranker、Gap Expander、Snowball Searcher、Full-Text Reader、Extractor、Synthesizer、Checker、Reporter |
+| Tool Layer | arXiv、Semantic Scholar、OpenAlex、Crossref、Tavily Web、OpenAlex citation graph、public PDF/OA reader、Markdown writer |
 | Storage and Memory | 本地 session 文件保存任务、消息、论文、证据、报告和 trace；SQLite 作为后续扩展 |
 | Evaluation and Observability | 记录指标、节点日志、benchmark 结果 |
 
@@ -44,7 +44,10 @@ flowchart TD
     C --> D["Coverage-aware Paper Ranker"]
     D --> E["Coverage Gap Detector"]
     E --> F["One-round Expansion Search"]
-    F --> G["Evidence Extractor"]
+    F --> SB["OpenAlex Snowball Search"]
+    SB --> FT["Open Full-Text Reader"]
+    FT --> RN["PaperReadingNote + Hierarchical Compression"]
+    RN --> G["Evidence Extractor"]
     G --> H["Evidence Matrix + Claim Graph"]
     H --> I["Citation Checker"]
     I --> K["Full Chinese Report Writer"]
@@ -110,6 +113,32 @@ flowchart TD
 
 - `coverage_gaps`
 - `expansion_rounds`
+
+### 4.2.2 Snowball Searcher
+
+职责：
+- 基于 OpenAlex seed work 从核心论文扩展 backward references 和 forward citations。
+- 将引用网络新增候选重新纳入去重、元数据合并和 coverage-aware ranking。
+- 记录 `SnowballRecord`，包括 seed、direction、added_paper_ids 和失败原因。
+
+输出：
+- `snowball_records`
+- `metadata_enrichment`
+
+### 4.2.3 Full-Text Reader
+
+职责：
+- 只读取公开 PDF / open access URL，不绕过付费墙。
+- 将公开全文解析为 `FullTextChunk`，再压缩为 `PaperReadingNote`。
+- 采用 paper -> chunks -> reading notes -> research-question synthesis -> global synthesis 的分层压缩策略，缓解大模型上下文窗口限制。
+- 无 PDF 解析依赖、下载失败或全文不可用时回退到摘要级阅读笔记。
+
+输出：
+- `full_text_chunks`
+- `reading_notes`
+- `reading_budget`
+- `question_synthesis`
+- `global_synthesis`
 
 ### 4.3 Paper Ranker
 
@@ -219,6 +248,16 @@ class ResearchState(TypedDict):
     corpus_profile: dict
     coverage_gaps: list[dict]
     expansion_rounds: list[dict]
+    snowball: str
+    snowball_records: list[dict]
+    metadata_enrichment: dict
+    read_depth: str
+    full_text_chunks: list[dict]
+    reading_notes: list[dict]
+    reading_budget: dict
+    question_synthesis: list[dict]
+    global_synthesis: dict
+    research_memory: list[dict]
     evidence_items: list[dict]
     evidence_matrix: list[dict]
     claims: list[dict]
@@ -249,7 +288,10 @@ class ResearchState(TypedDict):
 | --- | --- |
 | ResearchTask | task_id, topic, status, created_at, report_path |
 | QueryItem | query_id, query_text, source, filters |
-| PaperRecord | paper_id, title, authors, year, abstract, url, doi, arxiv_id, source |
+| PaperRecord | paper_id, title, authors, year, abstract, url, doi, arxiv_id, source, pdf_url, open_access_url, merged_sources, metadata_confidence |
+| FullTextChunk | chunk_id, paper_id, text, source_url, section_hint, char_start, char_end |
+| PaperReadingNote | note_id, paper_id, status, summary, methods, experiments, limitations, future_work, evidence_chunk_ids |
+| SnowballRecord | seed_paper_id, direction, added_paper_ids, fallback_reason |
 | EvidenceItem | evidence_id, paper_id, category, claim, support_text, confidence |
 | ClaimRecord | claim_id, claim_text, evidence_ids, claim_type |
 | CitationCheck | check_id, paper_id, status, message |

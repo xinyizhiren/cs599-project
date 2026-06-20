@@ -69,6 +69,21 @@ def _published_year(item: dict[str, Any]) -> int:
     return 0
 
 
+def _open_link(item: dict[str, Any]) -> str | None:
+    links = item.get("link")
+    if not isinstance(links, list):
+        return None
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        url = str(link.get("URL") or "").strip()
+        content_type = str(link.get("content-type") or "").lower()
+        intended = str(link.get("intended-application") or "").lower()
+        if url and ("pdf" in content_type or url.lower().endswith(".pdf") or "text-mining" in intended):
+            return url
+    return None
+
+
 def parse_crossref_response(json_text: str, limit: int | None = None) -> list[PaperRecord]:
     """Parse Crossref works JSON into PaperRecord objects."""
 
@@ -103,6 +118,7 @@ def parse_crossref_response(json_text: str, limit: int | None = None) -> list[Pa
                 + ". Abstract is not available in this metadata response."
             )
         url = str(item.get("URL") or f"https://doi.org/{doi}").strip()
+        open_link = _open_link(item)
 
         papers.append(
             PaperRecord(
@@ -115,6 +131,10 @@ def parse_crossref_response(json_text: str, limit: int | None = None) -> list[Pa
                 doi=doi,
                 source="crossref",
                 citation_count=int(item.get("is-referenced-by-count") or 0),
+                pdf_url=open_link if open_link and open_link.lower().endswith(".pdf") else None,
+                open_access_url=open_link,
+                merged_sources=["crossref"],
+                metadata_confidence=0.78 if open_link else 0.7,
             )
         )
         if limit is not None and len(papers) >= limit:
