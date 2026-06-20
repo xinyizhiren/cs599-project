@@ -14,11 +14,12 @@
           <span class="brand-mark">R</span>
           <div>
             <strong>ResearchFlow</strong>
-            <small>Agent Console</small>
+            <small>Deep Research Console</small>
           </div>
         </div>
 
         <form id="run-form" class="run-form">
+          <div class="form-caption">研究设置</div>
           <label class="field field-tall">
             <span>研究主题</span>
             <textarea
@@ -30,6 +31,7 @@
             >retrieval augmented generation for large language models</textarea>
           </label>
 
+          <div class="form-caption">检索范围</div>
           <fieldset class="segmented source-grid" aria-label="数据源">
             <legend>数据源（可多选）</legend>
             <label><input type="checkbox" name="sources" value="offline" checked /> Offline</label>
@@ -59,6 +61,7 @@
             </label>
           </div>
 
+          <div class="form-caption">输出与阅读</div>
           <label class="field">
             <span>报告类型</span>
             <select id="report-style" name="report_style">
@@ -115,6 +118,7 @@
             </label>
           </div>
 
+          <div class="form-caption">运行约束</div>
           <label class="toggle-row">
             <input id="require-live" name="require_live" type="checkbox" />
             <span>要求实时数据源</span>
@@ -153,6 +157,25 @@
           </div>
           <div id="run-status" class="status-chip">idle</div>
         </header>
+
+        <section class="run-overview" aria-label="运行概览">
+          <div>
+            <span>数据源</span>
+            <strong id="metric-sources">0</strong>
+          </div>
+          <div>
+            <span>查询</span>
+            <strong id="metric-queries">0</strong>
+          </div>
+          <div>
+            <span>阅读笔记</span>
+            <strong id="metric-reading">0</strong>
+          </div>
+          <div>
+            <span>覆盖缺口</span>
+            <strong id="metric-gaps">0</strong>
+          </div>
+        </section>
 
         <section class="process-panel" aria-label="Agent process">
           <div class="panel-head">
@@ -202,6 +225,7 @@
         </section>
 
         <section class="inspector-section report-section">
+          <h3>交付文件</h3>
           <div class="download-actions" aria-label="下载 Markdown">
             <button type="button" data-download="report">下载报告</button>
             <button type="button" data-download="summary">下载摘要</button>

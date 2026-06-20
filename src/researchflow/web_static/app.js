@@ -18,6 +18,10 @@ const evidenceCount = document.querySelector("#evidence-count");
 const downloadStatus = document.querySelector("#download-status");
 const refreshRuns = document.querySelector("#refresh-runs");
 const downloadActions = document.querySelector(".download-actions");
+const metricSources = document.querySelector("#metric-sources");
+const metricQueries = document.querySelector("#metric-queries");
+const metricReading = document.querySelector("#metric-reading");
+const metricGaps = document.querySelector("#metric-gaps");
 const chatMessages = document.querySelector("#chat-messages");
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
@@ -329,6 +333,20 @@ function renderEvidence(run) {
     .join("");
 }
 
+function renderOverview(run) {
+  const snapshots = run?.snapshots || {};
+  const queryCount =
+    (snapshots.query_plan || []).length +
+    ((snapshots.query_tree || {}).branches || []).reduce(
+      (sum, branch) => sum + (branch.subtopics || []).length,
+      0,
+    );
+  metricSources.textContent = run ? String(selectedSources(run).length) : "0";
+  metricQueries.textContent = String(queryCount || 0);
+  metricReading.textContent = String((snapshots.reading_notes || []).length);
+  metricGaps.textContent = String((snapshots.coverage_gaps || []).length);
+}
+
 function updateDownloadButtons(run) {
   const documents = run?.snapshots?.documents || {};
   const readyCount = Object.values(documents).filter((document) => document?.ready).length;
@@ -404,6 +422,7 @@ function renderRun(run) {
   renderQueryPlan(run);
   renderPapers(run);
   renderEvidence(run);
+  renderOverview(run);
   updateDownloadButtons(run);
   renderChat(run);
 }
@@ -509,6 +528,7 @@ downloadActions.addEventListener("click", (event) => {
 
 updateDownloadButtons(null);
 renderChat(null);
+renderOverview(null);
 
 async function sendChatMessage(message) {
   if (!activeRun || !message.trim()) return;
