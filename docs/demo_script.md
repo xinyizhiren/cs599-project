@@ -1,139 +1,180 @@
-# ResearchFlow 现场演示脚本
+# ResearchFlow 五分钟演示脚本
 
-适用场景：CS599 Final Demo，5 分钟演示 + 3 分钟答辩。
+适用场景：CS599 大作业现场演示，约 5 分钟展示 + 2 到 3 分钟答辩。
 
-## 1. 开场，约 30 秒
+演示地址：<http://47.94.83.129/researchflow/>
 
-大家好，我的项目是 ResearchFlow，一个面向学术文献调研的多智能体 Research Agent。
+演示主题建议：`retrieval augmented generation` 或 `agent`
 
-它解决的问题是：当我们调研一个新领域时，通常要反复设计关键词、搜索论文、筛选核心文献、阅读摘要或全文、组织方法脉络、检查引用，成本很高，而且普通大模型容易生成没有证据支撑的综述。
+## 演示前准备
 
-ResearchFlow 的目标不是只生成一段总结，而是生成三类可复查成果：
+打开云端页面，提前选中最近一次成功任务，例如 `20260622095054-agent`。确认右侧“完整研究报告”“文献综述”“研究过程记录”按钮可下载。
 
-- 中文综合总结。
-- 中文完整文献调研报告。
-- 可审计调研过程记录。
+如果现场网络不稳定，就只展示已有成功任务和下载报告；如果网络正常，再新建一个小规模任务。
 
-## 2. 架构说明，约 60 秒
+## 0:00-0:35 开场：项目解决什么问题
 
-系统采用 Agentic workflow，把调研拆成多个节点：
+讲词：
 
-```text
-topic refinement
--> query tree planning
--> multi-source search
--> coverage-aware ranking
--> gap recovery
--> OpenAlex snowball search
--> full-text reading
--> evidence extraction
--> claim synthesis
--> citation checking
--> report writing
--> evaluation
-```
+大家好，我的项目叫 ResearchFlow，是一个面向学术文献调研的 Agentic AI 系统。
 
-核心创新有四点：
+它解决的是一个很实际的问题：我们调研一个新领域时，成本主要不在“让大模型写几段话”，而在于如何设计检索式、找到可靠文献、筛掉噪声论文、理解大量材料、组织成一篇有证据支撑的综述报告，并且避免虚假引用。
 
-- 多源检索：arXiv、Semantic Scholar、Crossref、OpenAlex、可选 Tavily Web。
-- 引用雪球：从核心论文沿参考文献和被引论文继续扩展。
-- 分层压缩：`paper -> chunks -> PaperReadingNote -> question synthesis -> global synthesis`，缓解大模型上下文有限的问题。
-- 证据约束：通过 Evidence Matrix、Claim Graph 和 Citation Checker 约束报告结论。
+所以 ResearchFlow 的目标不是生成一个简短总结，而是生成三类成果：
 
-## 3. CLI 演示，约 90 秒
+- 一份中文综合总结，用于快速把握领域。
+- 一份接近综述论文结构的完整中文调研报告。
+- 一份可审计的调研过程记录，说明系统到底查了什么、筛了什么、引用是否可追溯。
 
-优先演示离线稳定闭环，保证现场不受网络影响：
+## 0:35-1:25 系统流程：为什么它是 Agent
 
-```powershell
-$env:PYTHONPATH="src"
-python -m researchflow run "retrieval augmented generation for large language models" --source offline --top-k 5 --report-style full --summary-style comprehensive --output tmp/demo_report.md --summary-output tmp/demo_summary.md --process-output tmp/demo_process.md
-```
+操作：
 
-展示三个输出：
+打开 Web 页面，指向中间的执行进度节点。
 
-- `tmp/demo_summary.md`：一页综合总结。
-- `tmp/demo_report.md`：完整中文调研报告。
-- `tmp/demo_process.md`：调研过程记录，包括 query plan、Top-K、Evidence Ledger、Citation Check 和 metrics。
+讲词：
 
-如果网络稳定，可以展示真实联网命令：
+这里可以看到系统不是一次性调用大模型，而是把调研拆成多个 Agent 节点：
 
-```powershell
-$env:PYTHONPATH="src"
-python -m researchflow run "retrieval augmented generation for large language models" --source openalex --require-live --llm deepseek --top-k 3 --max-candidates 12 --from-year 2023 --depth 2 --breadth 3 --report-style full --output docs/generated_reports/rag_openalex_deepseek_smoke.md --summary-output docs/generated_reports/rag_openalex_deepseek_summary.md --process-output docs/generated_reports/rag_openalex_deepseek_process.md
-```
+`主题理解 -> 查询规划 -> 多源检索 -> 排序筛选 -> 覆盖缺口补搜 -> 引用雪球 -> 全文/摘要阅读 -> 证据抽取 -> 结论综合 -> 引用校验 -> 报告生成 -> 评估`
 
-说明：DeepSeek Key 只从本地 `.env` 或环境变量读取，不写入仓库。
+它有几个关键设计：
 
-## 4. Web 演示，约 90 秒
+第一，多源检索。系统支持 arXiv、Semantic Scholar、Crossref、OpenAlex 和可选 Web 检索，不再只依赖 arXiv。
 
-启动 Web 控制台：
+第二，查询不是单一关键词。系统会生成 query tree，从综述、方法、评测、数据集、安全、局限、近期进展等角度检索，解决模糊主题和检索召回不足的问题。
 
-```powershell
-$env:PYTHONPATH="src"
-python -m researchflow.web --host 127.0.0.1 --port 7860
-```
+第三，面对大量文献，不把所有文本一次性塞进大模型，而是使用分层压缩：先按论文生成阅读笔记，再按研究问题综合，最后形成全局综述。
 
-演示路径：
+第四，报告有证据约束。结论要绑定 Evidence Matrix、Claim Graph 和 Citation Check，减少普通大模型常见的幻觉引用问题。
 
-1. 输入主题，例如 `RAG 怎么样` 或 `retrieval augmented generation for large language models`。
-2. 选择数据源和 top-k。
-3. 展示节点执行过程和报告区域。
-4. 在对话框输入：
-   - `多补充 benchmark 方向`
-   - `精读第 1 篇`
-   - `把方法对比写得更详细`
-5. 说明系统不是一次性 skill，而是可恢复 session agent。
+## 1:25-2:25 Web 演示：已有调研任务
 
-## 5. 评估与交付，约 50 秒
+操作：
 
-测试命令：
+1. 点击左侧最近的成功运行任务。
+2. 指向“数据源、查询、阅读笔记、总耗时”等指标。
+3. 指向“精选文献”表格。
+4. 点击论文旁边的“解释”按钮，展示它会把解释请求填入对话框。
 
-```powershell
-$env:PYTHONPATH="src"
-python -m pytest tests
-```
+讲词：
 
-当前结果：`40 passed`。
+这是一次已经完成的调研任务。这里可以看到本次任务使用了多个数据源，生成了查询计划，筛选出核心论文，并生成阅读笔记。
 
-评估命令：
+中间这张“精选文献”表不是简单搜索结果，而是经过相关性、年份、论文类型、来源质量、引用信息和覆盖维度综合排序后的核心材料。
 
-```powershell
-$env:PYTHONPATH="src"
-python -m researchflow evaluate --benchmark examples/benchmarks/basic.jsonl --output examples/evaluation/results.json
-```
+每篇论文旁边有三个操作：打开来源、复制引用、让 Agent 解释这篇论文。比如点击“解释”，系统会自动把“请解释这篇论文的贡献、方法、局限和它在调研报告中的位置”填入对话框。这说明它不是一次性 skill，而是可以围绕已有调研继续追问和调整的 Research Session Agent。
 
-评估维度包括：
+## 2:25-3:35 展示完整报告：不是小总结
 
-- 任务完成。
-- 检索质量。
-- 证据可信度。
-- 报告质量。
-- Agent 行为 trace。
+操作：
 
-最终交付物：
+点击右侧“完整研究报告”下载，或打开最近任务的报告内容。
 
-- `README.md`
-- `src/`
-- `docs/product_spec.md`
-- `docs/architecture_spec.md`
-- `docs/api_spec.md`
-- `docs/CS599_大作业报告.pdf`
-- tag：`v0.1`
+重点展示以下章节：
 
-## 6. 答辩可用回答
+- 摘要
+- 文献覆盖与时间分布
+- 领域知识地图与方法谱系
+- 研究问题综合与核心论文精读
+- 方法路线对比与适用场景
+- 评测、数据集与实验线索
+- 主要结论与证据链
+- 争议、局限与研究空白
+- 未来研究方向
+- 参考文献
+- Evidence Matrix
 
-Q：为什么不用普通大模型直接写综述？
+讲词：
 
-A：普通大模型的问题是过程不可复现、引用容易幻觉、结论缺少证据绑定。ResearchFlow 先检索、再抽证据、再写报告，并保留 Citation Check 和 Evidence Matrix。
+这里是最终产物，也是我后面重点优化的部分。之前系统容易生成偏简略的总结，现在完整报告已经改成综述式结构。
 
-Q：分层压缩会不会失真？
+它不是把论文逐篇堆上去，而是先讲调研问题和检索策略，再讲候选文献的时间分布、来源分布和论文类型，然后按方法谱系组织内容。
 
-A：会有信息损失，所以系统不把压缩结果当作无损事实，而是保留 evidence_id、PaperReadingNote、chunk、citation check 和 process 记录，让每个结论可以追溯。后续还可以加入 claim-level faithfulness 检查和冲突证据检测。
+比如“核心论文精读”这一节，会把每篇论文放回整个综述结构中，说明它的贡献、方法线索、局限和在本调研中的位置。
 
-Q：相比 Deep Research / GPT Researcher 的优势是什么？
+“方法路线对比”会把不同类型论文放在一起比较，而“主要结论与证据链”会显示结论对应的 evidence id。最后 Evidence Matrix 会保留“研究问题、论文、证据类型、证据编号”的对应关系，方便复核。
 
-A：ResearchFlow 更聚焦学术调研和课程交付，支持学术 API、引用校验、Evidence Matrix、Claim Graph、中文报告和本地可复现评估。不足是通用网页浏览、多模态理解和大规模商业级检索覆盖不如成熟系统。
+也就是说，这份报告更像一篇小型综述论文的初稿，而不是普通大模型给出的几段概括。
 
-Q：如果现场 API 失败怎么办？
+## 3:35-4:20 展示过程记录：可复现和可审计
 
-A：系统有离线 fixture 和 fallback 机制。联网失败时不会伪装成真实调研，会在 process 和 metrics 中记录 fallback reason。现场可以先演示离线闭环，再展示仓库中已有真实联网样例。
+操作：
+
+点击“研究过程记录”下载或展示。
+
+讲词：
+
+调研过程记录是 ResearchFlow 和普通写作工具很不同的地方。
+
+这里会记录 query plan、数据源命中情况、候选池规模、Top-K 选择、Evidence Ledger、Citation Check、评估指标和 fallback 原因。
+
+这样做有两个好处：
+
+第一，老师或用户可以知道报告是怎么来的，不是大模型凭空写出来的。
+
+第二，如果结果不满意，可以定位问题：是检索式不够好、数据源覆盖不足、评测论文太少，还是某些结论缺少证据。
+
+## 4:20-4:50 展示可对话调整
+
+操作：
+
+在对话框输入或展示快捷按钮：
+
+- `补充 benchmark 方向`
+- `精读 P1`
+- `把方法对比写得更详细`
+- `只看近三年论文`
+
+讲词：
+
+ResearchFlow 还支持在已有 session 上继续对话。用户可以要求补充某个方向、过滤应用论文、精读某篇论文，或者重写某个章节。
+
+系统会判断是只需要改写报告，还是要重排论文、补充检索、重新生成证据和报告。这样它更接近一个持续调研 Agent，而不是一次性运行完就结束的脚本。
+
+## 4:50-5:10 收尾：评估和交付
+
+讲词：
+
+最后，项目有自动化测试和评估闭环。目前测试是 `41 passed`。
+
+评估维度包括任务完成、检索质量、证据可信度、报告质量和 Agent 行为 trace。
+
+整体来说，ResearchFlow 的核心价值是降低进入一个研究领域的成本：它帮用户完成多源检索、筛选、证据组织、引用校验和综述式报告生成，同时保留过程记录，方便复查和继续迭代。
+
+## 备用：如果现场要新建任务
+
+云端页面操作：
+
+1. 主题输入：`retrieval augmented generation`
+2. 数据源选择：OpenAlex、Crossref、arXiv；如果担心网络波动，可只演示已有任务。
+3. Top K 选择 5 到 10。
+4. 报告类型选择“全面总结”。
+5. DeepSeek 增强开启。
+6. 点击“开始研究”。
+
+讲词：
+
+如果现场实时跑任务，我会把规模调小，展示节点流转即可。完整深度任务通常需要更长时间，因为它会做多源检索、排序、证据抽取和报告生成。
+
+## 答辩备用问答
+
+Q：为什么不直接让大模型写综述？
+
+A：直接写最大的问题是过程不可复现、引用可能幻觉、结论缺少证据。ResearchFlow 先检索和筛选，再抽取证据，最后在 Evidence Matrix 和 Citation Check 约束下生成报告。
+
+Q：分层压缩会不会带来信息失真？
+
+A：会有信息损失，所以系统不把压缩结果当作无损事实，而是保留 PaperReadingNote、Evidence ID、引用校验和过程记录。报告中的结论可以回溯到论文和证据条目。
+
+Q：相比 Deep Research 或 GPT Researcher 有什么区别？
+
+A：ResearchFlow 更聚焦学术文献调研，强调开放学术 API、多源元数据、Evidence Matrix、Claim Graph、引用校验、中文综述式报告和课程可复现评估。它的不足是通用网页浏览、多模态 PDF 理解和商业级检索覆盖不如成熟产品。
+
+Q：如果联网失败怎么办？
+
+A：系统有离线 fixture 和 fallback 机制。联网失败不会伪装成真实联网调研，而会在过程记录和 metrics 里记录 fallback reason。演示时可以先展示已有成功任务，再说明实时任务会受公共 API 限流影响。
+
+Q：报告是否已经能替代人工综述？
+
+A：不能完全替代。它更像“综述论文初稿和研究地图生成器”，能显著降低检索、筛选、组织和复核成本，但最终学术判断、实验细节确认和重要结论仍需要人工复核全文。
