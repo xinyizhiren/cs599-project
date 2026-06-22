@@ -262,6 +262,8 @@ def _paper_citation(paper: PaperRecord, index: int) -> str:
 def render_full_report(state: dict[str, Any]) -> str:
     """Render a complete Chinese literature review organized by questions and evidence."""
 
+    return _render_review_paper_report(state)
+
     topic = str(state.get("effective_topic") or state.get("topic", ""))
     original_topic = str(state.get("topic", topic))
     selected_papers: list[PaperRecord] = state.get("selected_papers", [])
@@ -735,6 +737,722 @@ def _format_year_range(temporal_profile: dict[str, Any]) -> str:
     if earliest is None or latest is None:
         return "unknown"
     return f"{earliest}-{latest}"
+
+
+def _claim_evidence_coverage(claims: list[ClaimRecord]) -> float:
+    if not claims:
+        return 0.0
+    supported = sum(1 for claim in claims if claim.evidence_ids)
+    return supported / len(claims)
+
+
+def _format_source_counts(source_counts: dict[str, Any], fallback_source: str = "unknown") -> str:
+    if not source_counts:
+        return fallback_source
+    pieces = [f"{source} {count} 条" for source, count in sorted(source_counts.items())]
+    return "、".join(pieces)
+
+
+def _paper_type_label(paper_type: str) -> str:
+    labels = {
+        "survey": "综述/分类",
+        "benchmark": "评测/基准",
+        "method": "方法",
+        "system": "系统",
+        "dataset": "数据集",
+        "application": "应用",
+        "position": "观点/路线图",
+        "web_background": "网页背景",
+        "unknown": "未分类",
+    }
+    return labels.get(str(paper_type), str(paper_type or "unknown"))
+
+
+def _note_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _ref_list(paper_ids: list[str], refs: dict[str, str], limit: int = 6) -> str:
+    values: list[str] = []
+    for paper_id in paper_ids:
+        ref = refs.get(paper_id)
+        if ref and ref not in values:
+            values.append(ref)
+        if len(values) >= limit:
+            break
+    return "、".join(f"`{item}`" for item in values) if values else "证据不足"
+
+
+def _paper_evidence_summary(items: list[EvidenceItem], category: str | None = None, limit: int = 3) -> list[str]:
+    selected = [item for item in items if category is None or item.category == category]
+    return [_clip_table_text(item.claim, 180) for item in selected[:limit]]
+
+
+def _paper_note_summary(note: Any) -> str:
+    if not note:
+        return ""
+    return _clip_table_text(str(_obj_value(note, "summary", "")), 260)
+
+
+def _paper_methods(note: Any, evidence_items: list[EvidenceItem]) -> str:
+    methods = _note_list(_obj_value(note, "methods", []))[:3] if note else []
+    if not methods:
+        methods = _paper_evidence_summary(evidence_items, category="method", limit=2)
+    return _safe_join([_clip_table_text(item, 120) for item in methods], fallback="未从摘要/全文中稳定抽取")
+
+
+def _paper_limits(note: Any, evidence_items: list[EvidenceItem]) -> str:
+    limits = _note_list(_obj_value(note, "limitations", []))[:3] if note else []
+    if not limits:
+        limits = _paper_evidence_summary(evidence_items, category="limitation", limit=2)
+    return _safe_join([_clip_table_text(item, 120) for item in limits], fallback="需要进一步全文复核")
+
+
+def _dimension_paper_ids(research_lens: dict[str, Any], dimension: str, selected_ids: set[str]) -> list[str]:
+    paper_ids: list[str] = []
+    for profile in research_lens.get("paper_profiles", []):
+        paper_id = str(profile.get("paper_id", ""))
+        if paper_id in selected_ids and dimension in profile.get("dimensions", []):
+            paper_ids.append(paper_id)
+    return paper_ids
+
+
+def _fallback_dimensions(selected_papers: list[PaperRecord]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for paper in selected_papers:
+        label = _paper_type_label(paper.paper_type)
+        counts[label] = counts.get(label, 0) + 1
+    return counts
+
+
+def _review_dimension_claim(
+    dimension: str,
+    paper_ids: list[str],
+    papers_by_id: dict[str, PaperRecord],
+    evidence_by_paper: dict[str, list[EvidenceItem]],
+    refs: dict[str, str],
+) -> str:
+    label = _dimension_label(dimension)
+    titles = [
+        _clip_table_text(papers_by_id[paper_id].title, 72)
+        for paper_id in paper_ids[:4]
+        if paper_id in papers_by_id
+    ]
+    evidence = [
+        item
+        for paper_id in paper_ids
+        for item in evidence_by_paper.get(paper_id, [])
+        if item.category in {"contribution", "method", "experiment", "limitation"}
+    ][:6]
+    evidence_text = "；".join(_clip_table_text(item.claim, 150) for item in evidence[:3])
+    refs_text = _ref_list(paper_ids, refs, limit=5)
+    if not evidence_text:
+        evidence_text = "当前证据主要来自标题、摘要和元数据，需要继续通过全文阅读补强方法细节与实验设置。"
+    return (
+        f"{label} 是本轮调研中需要单独理解的一个板块，代表论文包括 "
+        f"{'、'.join(titles) if titles else '暂无稳定代表论文'}。综合这些文献可以看到，"
+        f"该方向的主要信息不是孤立论文结论，而是围绕问题定义、方法选择、评测约束和适用边界形成的证据簇：{evidence_text} "
+        f"相关证据主要来自 {refs_text}。"
+    )
+
+
+def _question_rows(state: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = state.get("question_synthesis", [])
+    if rows:
+        return [row for row in rows if isinstance(row, dict)]
+    branches = state.get("query_tree", {}).get("branches", [])
+    if branches:
+        return [
+            {
+                "question_id": f"rq{index}",
+                "question": str(branch.get("question", "")),
+                "paper_ids": [],
+                "synthesis": "",
+            }
+            for index, branch in enumerate(branches, start=1)
+        ]
+    topic = str(state.get("effective_topic") or state.get("topic", ""))
+    return [
+        {
+            "question_id": "rq1",
+            "question": f"{topic} 的核心问题、方法谱系、评测方式和研究空白是什么？",
+            "paper_ids": [],
+            "synthesis": "",
+        }
+    ]
+
+
+def _render_review_paper_report(state: dict[str, Any]) -> str:
+    """Render a long-form Chinese review-paper style report.
+
+    The output intentionally uses deterministic synthesis from the evidence ledger,
+    reading notes, research lens, and claim graph. This prevents the full report
+    from degrading into a short LLM summary when the model is unavailable or terse.
+    """
+
+    topic = str(state.get("effective_topic") or state.get("topic", ""))
+    original_topic = str(state.get("topic", topic))
+    selected_papers: list[PaperRecord] = list(state.get("selected_papers", []))
+    ranked_candidates: list[PaperRecord] = list(state.get("ranked_candidates", []))
+    searched_papers: list[PaperRecord] = list(state.get("searched_papers", []))
+    evidence_items: list[EvidenceItem] = list(state.get("evidence_items", []))
+    claims: list[ClaimRecord] = list(state.get("claims", []))
+    citation_checks: list[CitationCheck] = list(state.get("citation_checks", []))
+    research_lens = state.get("research_lens", {}) or {}
+    corpus_profile = state.get("corpus_profile", {}) or {}
+    source_results = state.get("source_results", {}) or {}
+    temporal_profile = corpus_profile.get("temporal_profile") or state.get("temporal_profile", {}) or {}
+    coverage_gaps = state.get("coverage_gaps", []) or []
+    metrics = state.get("metrics", {}) or {}
+    reading_budget = state.get("reading_budget", {}) or {}
+    reading_notes = list(state.get("reading_notes", []))
+    full_text_chunks = list(state.get("full_text_chunks", []))
+    question_synthesis = _question_rows(state)
+    global_synthesis = state.get("global_synthesis", {}) or {}
+    evidence_matrix = state.get("evidence_matrix", []) or []
+    claim_graph = state.get("claim_graph", []) or []
+    snowball_records = list(state.get("snowball_records", []))
+    metadata_enrichment = state.get("metadata_enrichment", {}) or {}
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    refs = {paper.paper_id: f"P{index}" for index, paper in enumerate(selected_papers, start=1)}
+    papers_by_id = {paper.paper_id: paper for paper in selected_papers}
+    selected_ids = set(papers_by_id)
+    evidence_by_paper: dict[str, list[EvidenceItem]] = defaultdict(list)
+    evidence_by_category: dict[str, list[EvidenceItem]] = defaultdict(list)
+    for item in evidence_items:
+        evidence_by_paper[item.paper_id].append(item)
+        evidence_by_category[item.category].append(item)
+    notes_by_paper = {str(_obj_value(note, "paper_id", "")): note for note in reading_notes}
+    check_by_paper = {check.paper_id: check for check in citation_checks}
+    academic_papers = [paper for paper in selected_papers if paper.source != "web"]
+    web_sources = [paper for paper in selected_papers if paper.source == "web"]
+    candidate_count = int(corpus_profile.get("candidate_count", len(ranked_candidates) or len(searched_papers)))
+    source_counts = source_results.get("source_counts", {}) or {}
+    paper_type_counts = corpus_profile.get("selected_paper_type_counts", {}) or _fallback_dimensions(selected_papers)
+    dimension_counts = research_lens.get("dimension_counts", {}) or _fallback_dimensions(selected_papers)
+    sorted_dimensions = sorted(dimension_counts.items(), key=lambda item: (-int(item[1]), str(item[0])))
+    citation_rate = float(metrics.get("citation_check_pass_rate", _citation_pass_rate(citation_checks)))
+    evidence_coverage = float(metrics.get("claim_evidence_coverage", _claim_evidence_coverage(claims)))
+    lens_coverage = float(research_lens.get("coverage", 0.0)) if research_lens else 0.0
+
+    lines: list[str] = [
+        f"# {original_topic}：中文文献调研报告（综述式）",
+        "",
+        f"- 生成时间：{generated_at}",
+        f"- 有效检索主题：`{topic}`",
+        f"- 数据来源：`{state.get('actual_source', 'unknown')}`",
+        f"- 候选文献池：{candidate_count} 条；核心文献：{len(selected_papers)} 篇；证据条目：{len(evidence_items)} 条",
+        f"- 年份范围：{_format_year_range(temporal_profile)}；近三年占比：{float(temporal_profile.get('last_3_year_ratio', 0.0)):.3f}",
+        f"- Citation validity：{citation_rate:.3f}；Claim-Evidence coverage：{evidence_coverage:.3f}",
+        f"- 全文 chunk：{len(full_text_chunks)}；阅读笔记：{len(reading_notes)}；引用雪球记录：{len(snowball_records)}",
+        "",
+        "## 摘要",
+        "",
+        (
+            f"本文围绕“{original_topic}”组织了一次自动化但可审计的学术调研。与简略摘要不同，本报告的目标是尽量接近综述论文的写法："
+            "先说明调研范围和检索策略，再刻画文献覆盖画像，随后按研究问题、方法谱系、证据链和研究空白组织内容。"
+            f"系统从这些来源召回候选记录：{_format_source_counts(source_counts, str(state.get('actual_source', 'unknown')))}；"
+            f"经去重、年份过滤、覆盖感知排序、论文类型均衡和引用校验后保留 {len(selected_papers)} 篇核心材料。"
+        ),
+        "",
+        (
+            "本报告将每篇论文视为证据网络中的节点，而不是简单罗列论文摘要。报告中的主要判断来自 Evidence Ledger、"
+            "PaperReadingNote、Research Lens、Claim Graph 和 Citation Check：Evidence Ledger 负责保留可追溯证据，"
+            "Research Lens 用来观察综述、方法、评测、安全、结构化和应用等方向是否覆盖均衡，Claim Graph 则把综合结论与支持证据连接起来。"
+            "因此，读者可以把本文当作进入该领域的第一版研究地图：它帮助确定该先读什么、不同方法路线如何关联、哪些结论已有证据支持、哪些地方仍需继续精读全文。"
+        ),
+        "",
+        (
+            f"需要注意的是，当前阅读深度为 `{state.get('read_depth', 'abstract')}`。开放全文读取成功 "
+            f"{reading_budget.get('successful_papers', 0)} / {reading_budget.get('attempted_papers', 0)} 篇，"
+            "因此涉及实验数值、消融细节和强因果判断的部分仍被标记为需要人工复核。"
+        ),
+        "",
+        "## 1. 引言：问题背景与调研目标",
+        "",
+        (
+            f"对“{topic}”这类快速发展的研究主题而言，调研难点通常不在于找到几篇论文，而在于把大量材料组织成可解释的知识结构。"
+            "一方面，开放数据库会返回大量应用案例、短论文、预印本和重复元数据；另一方面，大模型上下文有限，"
+            "如果直接把候选论文拼接给模型，容易出现遗漏、平均化总结或引用幻觉。ResearchFlow 的策略是先扩大候选池，"
+            "再通过查询树、覆盖检测、证据矩阵和分层压缩把信息整理成可复核结构，最后生成面向阅读和决策的中文综述式报告。"
+        ),
+        "",
+        (
+            "本次调研重点回答四类问题：第一，该主题的研究对象和核心问题是什么；第二，已有研究形成了哪些方法路线和系统范式；"
+            "第三，领域内如何评测、比较和验证这些方法；第四，当前证据暴露出哪些局限、争议和未来研究空间。"
+        ),
+        "",
+        "## 2. 调研设计：检索策略、筛选规则与证据约束",
+        "",
+        "### 2.1 研究问题",
+        "",
+        "| ID | 研究问题 | 关联论文 | 初步综合 |",
+        "| --- | --- | --- | --- |",
+    ]
+    for row in question_synthesis[:8]:
+        paper_ids = [str(item) for item in row.get("paper_ids", [])]
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    f"`{row.get('question_id', '')}`",
+                    _clip_table_text(str(row.get("question", "")), 150),
+                    _ref_list(paper_ids, refs, limit=6),
+                    _clip_table_text(str(row.get("synthesis", "")) or "等待进一步全文综合。", 260),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### 2.2 检索与筛选策略",
+            "",
+            (
+                "系统采用“主题修正 -> 查询树 -> 多源检索 -> 去重合并 -> 覆盖感知排序 -> 证据抽取 -> 引用校验”的流程。"
+                "查询树不仅包含直接关键词，也包含综述、方法、评测、数据集、安全、局限、近期进展和相邻主题等角度，"
+                "目的是避免只找到与主题字面完全重合、但无法构成完整综述的材料。"
+            ),
+            "",
+            "| 数据源/候选画像 | 数量或说明 |",
+            "| --- | --- |",
+        ]
+    )
+    if source_counts:
+        for source, count in sorted(source_counts.items()):
+            lines.append(f"| {source} | {count} |")
+    else:
+        lines.append(f"| {state.get('actual_source', 'unknown')} | {len(searched_papers)} |")
+    lines.extend(
+        [
+            f"| Snowball 扩展 | 模式 `{state.get('snowball', 'none')}`，新增候选 {metadata_enrichment.get('added_candidates', 0)} 条 |",
+            f"| 阅读预算 | `{reading_budget}` |",
+            f"| LLM 使用 | provider=`{state.get('llm_provider', 'off')}`，used=`{str(state.get('llm_used', False)).lower()}` |",
+            "",
+            "### 2.3 证据约束",
+            "",
+            (
+                "报告只引用核心论文集合中的条目，并尽量将综合判断绑定到 evidence_id。若某个主题缺少实验或全文级证据，"
+                "报告会显式写成“需要进一步全文复核”，而不是让模型凭常识补全。这个约束牺牲了一部分文采，但能降低虚假引用和过度推断风险。"
+            ),
+            "",
+            "## 3. 文献覆盖与时间分布：来源、时间与论文类型画像",
+            "",
+            f"候选池覆盖 {_format_year_range(temporal_profile)}，近五年占比 {float(temporal_profile.get('last_5_year_ratio', 0.0)):.3f}。"
+            "文献类型分布决定了报告可信度：综述类论文适合建立地图，方法/系统论文适合分析技术路线，benchmark/dataset 论文适合支撑评测结论，"
+            "应用论文则更适合说明场景边界。若某类材料缺失，报告中的对应结论会更保守。",
+            "",
+            "| 核心论文类型 | 数量 | 解释 |",
+            "| --- | ---: | --- |",
+        ]
+    )
+    for paper_type, count in sorted(paper_type_counts.items()):
+        lines.append(f"| {_paper_type_label(str(paper_type))} | {count} | {_paper_type_explanation(str(paper_type))} |")
+
+    lines.extend(["", "| 年份 | 候选数量 |", "| ---: | ---: |"])
+    year_counts = temporal_profile.get("year_counts", {})
+    if year_counts:
+        for year, count in year_counts.items():
+            lines.append(f"| {year} | {count} |")
+    else:
+        lines.append("| unknown | 0 |")
+
+    lines.extend(
+        [
+            "",
+            "## 4. 领域知识地图与方法谱系",
+            "",
+            (
+                f"Research Lens 覆盖度为 {lens_coverage:.3f}。本节不按论文顺序展开，而是把核心材料映射到研究方向，"
+                "从而形成“领域地图”。这比逐篇摘要更接近综述论文的组织方式：每个方向都说明它解决什么问题、依赖哪些代表论文、"
+                "有哪些共识和边界。"
+            ),
+            "",
+        ]
+    )
+    for index, (dimension, count) in enumerate(sorted_dimensions[:8], start=1):
+        paper_ids = _dimension_paper_ids(research_lens, str(dimension), selected_ids)
+        if not paper_ids:
+            paper_ids = [paper.paper_id for paper in selected_papers if _paper_type_label(paper.paper_type) == str(dimension)][:6]
+        lines.extend(
+            [
+                f"### 4.{index} {_dimension_label(str(dimension))}",
+                "",
+                _review_dimension_claim(str(dimension), paper_ids, papers_by_id, evidence_by_paper, refs),
+                "",
+                "| 代表论文 | 年份 | 类型 | 关键证据 |",
+                "| --- | ---: | --- | --- |",
+            ]
+        )
+        for paper_id in paper_ids[:6]:
+            paper = papers_by_id.get(paper_id)
+            if not paper:
+                continue
+            evidence_text = _safe_join(_paper_evidence_summary(evidence_by_paper.get(paper_id, []), limit=2), fallback="暂无稳定证据")
+            lines.append(
+                f"| {refs.get(paper_id, paper_id)}. {_clip_table_text(paper.title, 80)} | {paper.year} | "
+                f"{_paper_type_label(paper.paper_type)} | {_clip_table_text(evidence_text, 220)} |"
+            )
+        if not paper_ids:
+            lines.append("| - | - | - | 该方向缺少可稳定映射的核心论文。 |")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## 5. 研究问题综合与核心论文精读",
+            "",
+            "本节按照研究问题组织材料，避免把报告写成论文清单。每个问题下面先给出综合判断，再列出支撑论文和证据状态。",
+            "",
+        ]
+    )
+    for index, row in enumerate(question_synthesis[:8], start=1):
+        paper_ids = [str(item) for item in row.get("paper_ids", []) if str(item) in refs]
+        if not paper_ids:
+            paper_ids = [paper.paper_id for paper in selected_papers[index - 1 : index + 5]]
+        related_evidence = [item for paper_id in paper_ids for item in evidence_by_paper.get(paper_id, [])][:8]
+        lines.extend(
+            [
+                f"### 5.{index} {str(row.get('question', '研究问题')).strip()}",
+                "",
+                (
+                    _clip_table_text(str(row.get("synthesis", "")), 620)
+                    if str(row.get("synthesis", "")).strip()
+                    else "当前证据显示，该问题需要结合代表论文的贡献、方法和局限共同判断，不能只依赖单篇论文结论。"
+                ),
+                "",
+                f"- 主要支撑论文：{_ref_list(paper_ids, refs, limit=8)}",
+                f"- 关键证据：{_safe_join([f'`{item.evidence_id}` {_clip_table_text(item.claim, 120)}' for item in related_evidence[:5]], fallback='证据不足')}",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "### 5.9 核心论文精读：贡献、方法、局限与报告位置",
+            "",
+            (
+                "本节不是完整翻译摘要，而是将每篇代表论文放回综述结构中：它贡献了什么、采用何种方法或系统思路、"
+                "对当前主题有什么局限，以及它在整份调研中的阅读价值。"
+            ),
+            "",
+        ]
+    )
+    detail_limit = min(len(selected_papers), 24)
+    for index, paper in enumerate(selected_papers[:detail_limit], start=1):
+        paper_evidence = evidence_by_paper.get(paper.paper_id, [])
+        note = notes_by_paper.get(paper.paper_id)
+        contribution = _safe_join(
+            _paper_evidence_summary(paper_evidence, category="contribution", limit=2)
+            or [_paper_note_summary(note)]
+            or [_first_sentence(paper.abstract, 240)],
+            fallback=_first_sentence(paper.abstract, 240),
+        )
+        method_text = _paper_methods(note, paper_evidence)
+        limit_text = _paper_limits(note, paper_evidence)
+        check = check_by_paper.get(paper.paper_id)
+        lines.extend(
+            [
+                f"### {refs.get(paper.paper_id, f'P{index}')}. {paper.title}",
+                "",
+                f"- 基本信息：{paper.year}；来源 `{paper.source}`；类型 `{_paper_type_label(paper.paper_type)}`；引用校验 `{check.status if check else 'warning'}`。",
+                f"- 贡献定位：{contribution}",
+                f"- 方法/系统线索：{method_text}",
+                f"- 局限与复核点：{limit_text}",
+                f"- 在本综述中的作用：{_paper_review_role(paper, research_lens)}",
+                "",
+            ]
+        )
+    if len(selected_papers) > detail_limit:
+        remaining_refs = [refs[paper.paper_id] for paper in selected_papers[detail_limit:] if paper.paper_id in refs]
+        lines.append(f"其余核心论文已进入参考文献和 Evidence Matrix，受篇幅控制未逐篇展开：{_safe_join([f'`{item}`' for item in remaining_refs[:30]])}。")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## 6. 方法路线对比与适用场景",
+            "",
+            "| 路线/类型 | 代表论文 | 主要价值 | 适用场景 | 局限或风险 |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    papers_by_type: dict[str, list[PaperRecord]] = defaultdict(list)
+    for paper in selected_papers:
+        papers_by_type[paper.paper_type].append(paper)
+    for paper_type, papers in sorted(papers_by_type.items(), key=lambda item: (-len(item[1]), item[0])):
+        ids = [paper.paper_id for paper in papers]
+        evidence_text = _safe_join(
+            [
+                _clip_table_text(item.claim, 100)
+                for paper in papers[:4]
+                for item in evidence_by_paper.get(paper.paper_id, [])[:1]
+            ],
+            fallback="证据不足",
+        )
+        lines.append(
+            f"| {_paper_type_label(paper_type)} | {_ref_list(ids, refs, limit=5)} | "
+            f"{_clip_table_text(evidence_text, 180)} | {_type_use_case(paper_type)} | {_type_risk(paper_type)} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 7. 评测、数据集与实验线索",
+            "",
+            (
+                "评测部分是综述报告中最容易被普通摘要忽略的内容。ResearchFlow 只从 evidence 中稳定出现的 benchmark、dataset、evaluation、metric、experiment 线索生成结论；"
+                "如果没有足够证据，则明确标记为覆盖缺口。"
+            ),
+            "",
+            "| 线索 | 论文 | 证据 | 解释 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    benchmark_items = [
+        item
+        for item in evidence_items
+        if item.category == "experiment"
+        or any(token in f"{item.claim} {item.support_text}".lower() for token in ["benchmark", "dataset", "evaluation", "metric", "experiment"])
+    ]
+    for item in benchmark_items[:16]:
+        lines.append(
+            f"| `{item.evidence_id}` | {refs.get(item.paper_id, item.paper_id)} | "
+            f"{_clip_table_text(item.claim, 160)} | 该证据可用于判断方法是否经过系统评测，但仍建议查阅全文确认数据集、指标和实验设置。 |"
+        )
+    if not benchmark_items:
+        lines.append("| - | - | 未从当前证据中稳定抽取评测/数据集信息 | 下一轮应优先补搜 benchmark、dataset、evaluation 相关论文。 |")
+
+    lines.extend(
+        [
+            "",
+            "## 8. 主要结论与证据链",
+            "",
+            "| 结论 | 类型/置信 | 支持证据 | 解释 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    if claim_graph:
+        for node in claim_graph[:18]:
+            evidence_ids = [
+                str(item.get("evidence_id", ""))
+                for item in node.get("supporting_evidence", []) + node.get("limitations", [])
+                if item.get("evidence_id")
+            ]
+            lines.append(
+                f"| {_clip_table_text(str(node.get('claim_text', '')), 220)} | "
+                f"{float(node.get('confidence', 0.0)):.3f} | "
+                f"{_safe_join([f'`{item}`' for item in evidence_ids], fallback='证据不足')} | "
+                "该结论来自 Claim Graph 聚合，仍保留对应 evidence_id 便于复查。 |"
+            )
+    else:
+        for claim in claims[:18]:
+            lines.append(
+                f"| {_clip_table_text(claim.claim_text, 220)} | {claim.claim_type} | "
+                f"{_safe_join([f'`{item}`' for item in claim.evidence_ids], fallback='证据不足')} | "
+                "该结论由规则综合器生成，建议结合 Evidence Ledger 复核。 |"
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 9. 争议、局限与研究空白",
+            "",
+            "### 9.1 领域覆盖缺口",
+            "",
+        ]
+    )
+    if coverage_gaps:
+        for gap in coverage_gaps:
+            lines.append(f"- {gap.get('label', 'coverage gap')}：{gap.get('reason', '')}")
+    else:
+        lines.append("- 当前 Research Lens 未发现明显结构性缺口，但这只表示摘要级覆盖相对均衡，不代表全文证据已经充分。")
+    limitation_items = evidence_by_category.get("limitation", [])
+    lines.extend(["", "### 9.2 论文证据暴露出的局限", ""])
+    if limitation_items:
+        for item in limitation_items[:12]:
+            lines.append(f"- {refs.get(item.paper_id, item.paper_id)} / `{item.evidence_id}`：{_clip_table_text(item.claim, 220)}")
+    else:
+        lines.append("- 当前 evidence 中缺少稳定的 limitation 条目，建议通过全文阅读补充负面结果、适用边界和失败案例。")
+    lines.extend(
+        [
+            "",
+            "### 9.3 系统性可信度限制",
+            "",
+            "- 开放学术 API 的元数据可能存在重复、缺 DOI、年份不一致或引用数滞后问题。",
+            "- 摘要级阅读适合构建领域地图，但不足以确认实验细节、消融设计和统计显著性。",
+            "- 分层压缩会降低上下文成本，但可能损失少数论文的细粒度细节，因此报告保留 evidence_id 和参考文献用于回溯。",
+            "- LLM 只用于主题修正、证据抽取或报告润色；最终引用必须来自候选论文白名单。",
+            "",
+            "## 10. 未来研究方向与下一轮调研建议",
+            "",
+        ]
+    )
+    future_items = evidence_by_category.get("future_work", [])
+    future_lines = [
+        "围绕评测基准和真实任务表现继续补充证据，区分方法在实验环境与实际场景中的差异。",
+        "围绕安全性、鲁棒性、隐私、可解释性和失败案例做反向检索，避免报告只呈现正向结果。",
+        "将核心综述论文与 benchmark/dataset 论文配对阅读，形成“概念地图 + 可验证指标”的双层理解。",
+        "对引用网络中的高被引论文和近期论文分别建模，避免只关注热门新论文而忽略基础方法。",
+    ]
+    for item in future_items[:6]:
+        future_lines.append(f"{refs.get(item.paper_id, item.paper_id)} 提示：{_clip_table_text(item.claim, 180)}")
+    for index, item in enumerate(future_lines, start=1):
+        lines.append(f"{index}. {item}")
+
+    lines.extend(
+        [
+            "",
+            "### 10.5 阅读路线",
+            "",
+            "| 阶段 | 阅读目标 | 推荐论文 | 产出 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    survey_ids = [paper.paper_id for paper in selected_papers if paper.paper_type == "survey"][:5]
+    method_ids = [paper.paper_id for paper in selected_papers if paper.paper_type in {"method", "system"}][:6]
+    benchmark_ids = [paper.paper_id for paper in selected_papers if paper.paper_type in {"benchmark", "dataset"}][:5]
+    limitation_ids = [item.paper_id for item in limitation_items[:5]]
+    application_ids = [paper.paper_id for paper in selected_papers if paper.paper_type == "application"][:5]
+    lines.extend(
+        [
+            f"| 1. 建立地图 | 先理解术语、问题边界和分类框架 | {_ref_list(survey_ids or [paper.paper_id for paper in selected_papers[:3]], refs)} | 形成概念表和研究问题清单 |",
+            f"| 2. 深入方法 | 比较核心方法、系统架构和技术取舍 | {_ref_list(method_ids or [paper.paper_id for paper in selected_papers[:5]], refs)} | 形成方法谱系和对比表 |",
+            f"| 3. 验证评测 | 查清 benchmark、dataset、metric 和实验设置 | {_ref_list(benchmark_ids, refs)} | 形成可复核评测清单 |",
+            f"| 4. 识别风险 | 阅读 limitation、安全、鲁棒性和失败案例 | {_ref_list(limitation_ids, refs)} | 形成研究空白和风险列表 |",
+            f"| 5. 看应用边界 | 只在需要落地时阅读应用论文 | {_ref_list(application_ids, refs)} | 判断场景迁移和工程价值 |",
+        ]
+    )
+
+    lines.extend(["", "## 11. 参考文献", ""])
+    for index, paper in enumerate(academic_papers, start=1):
+        lines.append(_paper_citation(paper, index))
+    if web_sources:
+        lines.extend(["", "### 网页背景来源", ""])
+        for index, paper in enumerate(web_sources, start=1):
+            lines.append(f"[W{index}] {paper.title}. {paper.url}")
+
+    lines.extend(
+        [
+            "",
+            "## 附录 A：Evidence Matrix 与审计轨迹",
+            "",
+            "### A.1 Evidence Matrix 摘要",
+            "",
+            "| 研究问题 | 论文 | 类型 | Evidence IDs |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in evidence_matrix[:60]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _clip_table_text(str(row.get("question", "")), 100),
+                    _clip_table_text(str(row.get("paper_title", "")), 90),
+                    str(row.get("paper_type", "")),
+                    ", ".join(f"`{item}`" for item in row.get("evidence_ids", [])) or "None",
+                ]
+            )
+            + " |"
+        )
+    if not evidence_matrix:
+        lines.append("| - | - | - | 未生成 Evidence Matrix |")
+
+    lines.extend(
+        [
+            "",
+            "### A.2 Citation Check",
+            "",
+            "| Check ID | Paper ID | 状态 | 信息 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for check in citation_checks:
+        lines.append(f"| `{check.check_id}` | `{check.paper_id}` | {check.status} | {_clip_table_text(check.message, 160)} |")
+
+    lines.extend(
+        [
+            "",
+            "### A.3 分层压缩与可追溯性",
+            "",
+            f"- Global synthesis: `{global_synthesis}`",
+            f"- 完整报告：`{state.get('report_path', '')}`",
+            f"- 快速总结：`{state.get('summary_path', '') or '未指定输出路径'}`",
+            f"- 调研过程记录：`{state.get('process_path', '') or '未指定输出路径'}`",
+            f"- LLM fallback：{_sanitize_secret_text(state.get('llm_fallback_reason', '') or '无')}",
+        ]
+    )
+    fallback_reason = state.get("fallback_reason", "")
+    if fallback_reason:
+        lines.append(f"- 数据源降级说明：{_sanitize_secret_text(fallback_reason)}")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _paper_type_explanation(paper_type: str) -> str:
+    explanations = {
+        "survey": "适合建立领域地图、术语体系和问题边界。",
+        "benchmark": "适合支撑评测指标、数据集和可比较实验结论。",
+        "method": "适合分析算法、模型或核心技术路线。",
+        "system": "适合分析架构、流程编排和工程落地方式。",
+        "dataset": "适合支撑数据来源、任务定义和评测标准。",
+        "application": "适合理解场景边界，但不能替代方法和评测证据。",
+        "position": "适合提炼挑战、趋势和未来方向。",
+        "web_background": "只作为背景材料，不默认进入学术参考文献主表。",
+    }
+    return explanations.get(paper_type, "需要结合标题、摘要和证据进一步判断。")
+
+
+def _type_use_case(paper_type: str) -> str:
+    cases = {
+        "survey": "进入新方向、建立分类框架",
+        "benchmark": "比较方法效果、确定评测协议",
+        "method": "理解核心算法和技术取舍",
+        "system": "分析工程架构和端到端流程",
+        "dataset": "明确任务定义和数据边界",
+        "application": "判断落地场景和迁移风险",
+        "position": "识别挑战和未来路线",
+    }
+    return cases.get(paper_type, "作为补充材料")
+
+
+def _type_risk(paper_type: str) -> str:
+    risks = {
+        "survey": "可能滞后于最新论文，需要结合近年方法补读",
+        "benchmark": "可能只覆盖特定任务，外推需谨慎",
+        "method": "可能缺少真实场景验证",
+        "system": "工程复杂度和可复现性需要复核",
+        "dataset": "数据偏差和标注质量会影响结论",
+        "application": "容易偏离通用方法问题",
+        "position": "观点性较强，需用实证论文验证",
+    }
+    return risks.get(paper_type, "证据密度不足时需要全文复核")
+
+
+def _paper_review_role(paper: PaperRecord, research_lens: dict[str, Any]) -> str:
+    dimensions: list[str] = []
+    for profile in research_lens.get("paper_profiles", []):
+        if profile.get("paper_id") == paper.paper_id:
+            dimensions = [str(item) for item in profile.get("dimensions", [])]
+            break
+    if dimensions:
+        return f"支撑 {_safe_join([_dimension_label(item) for item in dimensions[:4]])} 等方向。"
+    if paper.paper_type == "survey":
+        return "用于建立领域地图和概念分类。"
+    if paper.paper_type in {"method", "system"}:
+        return "用于理解核心方法路线和系统实现。"
+    if paper.paper_type in {"benchmark", "dataset"}:
+        return "用于支撑评测协议和可比较指标。"
+    if paper.paper_type == "application":
+        return "用于理解应用边界和场景迁移问题。"
+    return "作为补充证据进入综合分析。"
 
 
 def render_summary_report(state: dict[str, Any]) -> str:

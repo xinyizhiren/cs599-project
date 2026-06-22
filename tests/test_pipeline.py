@@ -27,9 +27,14 @@ def test_run_research_offline_generates_report() -> None:
     assert output.exists()
     report = output.read_text(encoding="utf-8")
     assert "中文文献调研报告" in report
+    assert "综述式" in report
     assert "## 8. 主要结论与证据" in report
     assert "## 11. 参考文献" in report
+    assert "核心论文精读" in report
+    assert "方法路线对比" in report
+    assert "阅读路线" in report
     assert "Evidence Matrix" in report
+    assert len(report) > 7000
     assert result.metrics["evidence_count"] >= 6
     assert result.metrics["reading_note_coverage"] == 1.0
     assert result.metrics["full_text_chunk_count"] == 0
@@ -149,6 +154,8 @@ def test_run_research_hybrid_uses_live_source_adapters(monkeypatch) -> None:
     report = output.read_text(encoding="utf-8")
     assert "中文文献调研报告" in report
     assert "## 3. 文献覆盖与时间分布" in report
+    assert "综述式" in report
+    assert "方法路线对比" in report
 
 
 def test_balanced_merge_papers_prevents_source_starvation() -> None:

@@ -1891,6 +1891,23 @@ def node_check_citations(state: ResearchState) -> dict[str, Any]:
     return {"citation_checks": check_citations(state["selected_papers"], state["claims"])}
 
 
+def _is_substantive_full_report(report_markdown: str, selected_count: int) -> bool:
+    """Reject terse LLM reports so full-report downloads stay review-like."""
+
+    required_sections = [
+        "摘要",
+        "## 4.",
+        "## 6.",
+        "## 10.",
+        "参考文献",
+        "Evidence Matrix",
+    ]
+    min_chars = 5500 if selected_count >= 10 else 3200
+    if len(report_markdown) < min_chars:
+        return False
+    return all(section in report_markdown for section in required_sections)
+
+
 def node_write_report(state: ResearchState) -> dict[str, Any]:
     report_topic = state.get("effective_topic", state["topic"])
     if state.get("report_style", "full") == "full":
@@ -1909,15 +1926,24 @@ def node_write_report(state: ResearchState) -> dict[str, Any]:
             llm_used=bool(state.get("llm_used", False)),
             research_lens=state.get("research_lens", {}),
         )
+    baseline_report_markdown = report_markdown
     llm_used = bool(state.get("llm_used", False))
     llm_fallback_reason = state.get("llm_fallback_reason", "")
     if state.get("llm_provider") == "deepseek" and state.get("report_style", "full") == "full":
         try:
-            report_markdown = publish_full_report_with_llm(
+            llm_report_markdown = publish_full_report_with_llm(
                 state,
                 provider="deepseek",
             )
-            llm_used = True
+            if _is_substantive_full_report(llm_report_markdown, len(state.get("selected_papers", []))):
+                report_markdown = llm_report_markdown
+                llm_used = True
+            else:
+                report_markdown = baseline_report_markdown
+                reason = "Report publisher fallback: LLM report was too short or missed required review sections."
+                llm_fallback_reason = (
+                    f"{llm_fallback_reason}; {reason}" if llm_fallback_reason else reason
+                )
         except LLMError as exc:
             reason = f"Report publisher fallback: {exc}"
             llm_fallback_reason = (
