@@ -36,10 +36,22 @@ const chatInput = document.querySelector("#chat-input");
 const chatSend = document.querySelector("#chat-send");
 const chatStatus = document.querySelector("#chat-status");
 const quickActions = document.querySelector(".quick-actions");
+const appShell = document.querySelector(".app-shell");
+const sidebarToggle = document.querySelector("#sidebar-toggle");
+const themeToggle = document.querySelector("#theme-toggle");
+const settingsFocus = document.querySelector("#settings-focus");
+const railButtons = Array.from(document.querySelectorAll(".rail-button"));
+const paperSearchInput = document.querySelector(".papers-panel input[type='search']");
+const exportPapers = document.querySelector("#export-papers");
+const filterPapers = document.querySelector("#filter-papers");
+const toggleInspector = document.querySelector("#toggle-inspector");
+const uiToast = document.querySelector("#ui-toast");
 
 let activeRun = null;
 let selectedStepId = "understand_topic";
 let pollTimer = null;
+let paperSearchTerm = "";
+let paperFilterMode = "all";
 
 const DEFAULT_STEP_MILESTONES = [
   { id: "understand_topic", name: "理解主题", label: "", description: "", status: "idle", elapsed_ms: null },
@@ -116,6 +128,117 @@ function compactValue(value) {
   return String(value ?? "");
 }
 
+function showToast(message, tone = "info") {
+  if (!uiToast) return;
+  uiToast.textContent = message;
+  uiToast.className = `ui-toast show ${tone}`;
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    uiToast.className = "ui-toast";
+  }, 2600);
+}
+
+function setButtonBusy(button, busy) {
+  if (!button) return;
+  button.classList.toggle("is-busy", Boolean(busy));
+  button.disabled = Boolean(busy);
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadTextFile(filename, text, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function setTheme(theme) {
+  const normalized = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = normalized;
+  localStorage.setItem("researchflow-theme", normalized);
+  const use = themeToggle?.querySelector("use");
+  if (use) use.setAttribute("href", normalized === "dark" ? "#icon-moon" : "#icon-sun");
+  if (themeToggle) {
+    themeToggle.title = normalized === "dark" ? "切换浅色外观" : "切换深色外观";
+    themeToggle.setAttribute("aria-label", themeToggle.title);
+  }
+}
+
+function paperMatchesSearch(paper, term) {
+  if (!term) return true;
+  const haystack = [
+    paper.title,
+    paper.abstract,
+    paper.source,
+    paper.year,
+    paper.paper_type,
+    ...(Array.isArray(paper.authors) ? paper.authors : []),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(term.toLowerCase());
+}
+
+function paperMatchesFilter(paper, allPapers) {
+  if (paperFilterMode === "recent") {
+    return Number(paper.year || 0) >= new Date().getFullYear() - 3;
+  }
+  if (paperFilterMode === "highScore") {
+    const scores = allPapers.map((item) => Number(item.score || 0)).sort((a, b) => a - b);
+    const median = scores.length ? scores[Math.floor(scores.length / 2)] : 0;
+    return Number(paper.score || 0) >= median;
+  }
+  if (paperFilterMode === "surveyBenchmark") {
+    return ["survey", "benchmark", "dataset"].includes(String(paper.paper_type || "").toLowerCase());
+  }
+  return true;
+}
+
+function visiblePapers(run = activeRun) {
+  const papers = run?.snapshots?.selected_papers || [];
+  const currentSearchTerm = paperSearchInput ? paperSearchInput.value.trim() : paperSearchTerm;
+  paperSearchTerm = currentSearchTerm;
+  return papers.filter((paper) => paperMatchesSearch(paper, currentSearchTerm) && paperMatchesFilter(paper, papers));
+}
+
+function updatePaperFilterButton() {
+  if (!filterPapers) return;
+  const labels = {
+    all: "全部论文",
+    recent: "近三年",
+    highScore: "高相关",
+    surveyBenchmark: "综述/评测",
+  };
+  filterPapers.title = `筛选论文：${labels[paperFilterMode]}`;
+  filterPapers.setAttribute("aria-pressed", paperFilterMode !== "all" ? "true" : "false");
+  filterPapers.dataset.mode = paperFilterMode;
+}
+
 function formatAuthors(authors) {
   if (Array.isArray(authors)) return authors.slice(0, 2).join(", ");
   return String(authors || "");
@@ -128,6 +251,9 @@ function selectedSources(run) {
 function updateSourcesSummary() {
   if (!sourcesSummary) return;
   const selected = sourceInputs.filter((input) => input.checked).length;
+  if (selectAllSources) {
+    selectAllSources.textContent = selected === sourceInputs.length ? "清空" : "全选";
+  }
   sourcesSummary.textContent = `已选择 ${selected} / ${sourceInputs.length} 个数据源`;
 }
 
@@ -337,16 +463,24 @@ function renderQueryPlan(run) {
 
 function renderPapers(run) {
   const papers = run?.snapshots?.selected_papers || [];
-  paperCount.textContent = String(papers.length);
+  const filteredPapers = visiblePapers(run);
+  paperCount.textContent = filteredPapers.length === papers.length ? String(papers.length) : `${filteredPapers.length}/${papers.length}`;
+  if (exportPapers) exportPapers.disabled = !filteredPapers.length;
   if (!papers.length) {
     paperList.className = "paper-list empty-state";
     paperList.textContent = "暂无数据";
     return;
   }
 
+  if (!filteredPapers.length) {
+    paperList.className = "paper-list empty-state";
+    paperList.textContent = "没有匹配当前搜索或筛选条件的论文";
+    return;
+  }
+
   paperList.className = "paper-list";
-  const rows = papers
-    .slice(0, 8)
+  const rows = filteredPapers
+    .slice(0, 12)
     .map(
       (paper, index) => `
         <tr>
@@ -362,16 +496,22 @@ function renderPapers(run) {
           <td>${Number(paper.score || 0).toFixed(2)}</td>
           <td>
             <span class="paper-actions" aria-label="论文操作">
-              <svg class="icon"><use href="#icon-eye"></use></svg>
-              <svg class="icon"><use href="#icon-doc"></use></svg>
-              <svg class="icon"><use href="#icon-bookmark"></use></svg>
+              <button type="button" data-paper-action="open" data-paper-id="${escapeText(paper.paper_id)}" title="打开来源">
+                <svg class="icon"><use href="#icon-external-link"></use></svg>
+              </button>
+              <button type="button" data-paper-action="copy" data-paper-id="${escapeText(paper.paper_id)}" title="复制引用">
+                <svg class="icon"><use href="#icon-copy"></use></svg>
+              </button>
+              <button type="button" data-paper-action="ask" data-paper-id="${escapeText(paper.paper_id)}" title="让 Agent 解释这篇论文">
+                <svg class="icon"><use href="#icon-message-text"></use></svg>
+              </button>
             </span>
           </td>
         </tr>
       `,
     )
     .join("");
-  const end = Math.min(papers.length, 8);
+  const end = Math.min(filteredPapers.length, 12);
   paperList.innerHTML = `
     <table class="paper-table">
       <thead>
@@ -392,6 +532,13 @@ function renderPapers(run) {
       <span class="pager"><span class="active">1</span><span>2</span><span>3</span><span>›</span></span>
     </div>
   `;
+  const footer = paperList.querySelector(".table-footer");
+  if (footer) {
+    footer.innerHTML = `
+      <span>显示 1-${end} 条，共 ${filteredPapers.length} 条可见论文；原始核心论文 ${papers.length} 条</span>
+      <span class="pager"><span class="active">${escapeText(filterPapers?.title || "全部论文")}</span></span>
+    `;
+  }
 }
 
 function renderEvidence(run) {
@@ -415,6 +562,43 @@ function renderEvidence(run) {
       `,
     )
     .join("");
+}
+
+function getPaperById(paperId) {
+  return (activeRun?.snapshots?.selected_papers || []).find((paper) => paper.paper_id === paperId);
+}
+
+function paperCitation(paper) {
+  const authors = Array.isArray(paper.authors) && paper.authors.length ? paper.authors.join(", ") : "Unknown authors";
+  return `${authors}. (${paper.year || "n.d."}). ${paper.title}. ${paper.url || ""}`;
+}
+
+function exportVisiblePapersCSV() {
+  const papers = visiblePapers();
+  if (!papers.length) {
+    showToast("当前没有可导出的论文", "warn");
+    return;
+  }
+  const header = ["rank", "title", "authors", "year", "source", "paper_type", "score", "doi", "arxiv_id", "url"];
+  const rows = papers.map((paper, index) =>
+    [
+      index + 1,
+      paper.title,
+      Array.isArray(paper.authors) ? paper.authors.join("; ") : "",
+      paper.year,
+      paper.source,
+      paper.paper_type,
+      Number(paper.score || 0).toFixed(4),
+      paper.doi || "",
+      paper.arxiv_id || "",
+      paper.url || "",
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  const safeId = activeRun?.id || "researchflow";
+  downloadTextFile(`${safeId}-selected-papers.csv`, [header.map(csvCell).join(","), ...rows].join("\n"), "text/csv;charset=utf-8");
+  showToast(`已导出 ${papers.length} 篇可见论文`, "success");
 }
 
 function renderOverview(run) {
@@ -620,13 +804,25 @@ stepList.addEventListener("click", (event) => {
   renderRun(activeRun);
 });
 
-refreshRuns.addEventListener("click", refreshRunList);
+refreshRuns.addEventListener("click", async () => {
+  setButtonBusy(refreshRuns, true);
+  try {
+    await refreshRunList();
+    showToast("运行历史已刷新", "success");
+  } catch (error) {
+    showToast(`刷新失败：${error.message}`, "error");
+  } finally {
+    setButtonBusy(refreshRuns, false);
+  }
+});
 
 selectAllSources.addEventListener("click", () => {
+  const allSelected = sourceInputs.every((input) => input.checked);
   sourceInputs.forEach((input) => {
-    input.checked = true;
+    input.checked = !allSelected;
   });
   updateSourcesSummary();
+  showToast(allSelected ? "已清空数据源选择，提交时会使用离线兜底" : "已选择全部数据源");
 });
 
 sourceInputs.forEach((input) => {
@@ -638,6 +834,91 @@ clearSession.addEventListener("click", () => {
   selectedStepId = "understand_topic";
   renderRun(null);
   markActiveRun("");
+  showToast("已清空当前视图；服务器历史记录仍保留");
+});
+
+sidebarToggle?.addEventListener("click", () => {
+  appShell?.classList.toggle("sidebar-collapsed");
+  const collapsed = appShell?.classList.contains("sidebar-collapsed");
+  sidebarToggle.title = collapsed ? "展开侧栏" : "折叠侧栏";
+  sidebarToggle.setAttribute("aria-label", sidebarToggle.title);
+});
+
+themeToggle?.addEventListener("click", () => {
+  setTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+});
+
+settingsFocus?.addEventListener("click", () => {
+  document.querySelector("#require-live")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  document.querySelector("#require-live")?.focus({ preventScroll: true });
+  showToast("已跳到高级选项");
+});
+
+railButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (button.dataset.action === "help") {
+      showToast("从左侧设置主题与数据源，中间查看进度和论文，右侧下载报告并继续对话。");
+      return;
+    }
+    const target = button.dataset.target ? document.querySelector(button.dataset.target) : null;
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      railButtons.forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+    }
+  });
+});
+
+["input", "search", "change", "keyup"].forEach((eventName) => {
+  paperSearchInput?.addEventListener(eventName, () => {
+    paperSearchTerm = paperSearchInput.value.trim();
+    renderPapers(activeRun);
+  });
+});
+
+filterPapers?.addEventListener("click", () => {
+  const modes = ["all", "recent", "highScore", "surveyBenchmark"];
+  paperFilterMode = modes[(modes.indexOf(paperFilterMode) + 1) % modes.length];
+  updatePaperFilterButton();
+  renderPapers(activeRun);
+  showToast(filterPapers.title);
+});
+
+exportPapers?.addEventListener("click", exportVisiblePapersCSV);
+
+paperList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-paper-action]");
+  if (!button) return;
+  const paper = getPaperById(button.dataset.paperId);
+  if (!paper) {
+    showToast("没有找到这篇论文", "error");
+    return;
+  }
+  if (button.dataset.paperAction === "open") {
+    if (paper.url) {
+      window.open(paper.url, "_blank", "noopener,noreferrer");
+      showToast("已打开论文来源");
+    } else {
+      showToast("这篇论文没有可打开的 URL", "warn");
+    }
+  } else if (button.dataset.paperAction === "copy") {
+    await copyToClipboard(paperCitation(paper));
+    showToast("引用已复制到剪贴板", "success");
+  } else if (button.dataset.paperAction === "ask") {
+    const index = (activeRun?.snapshots?.selected_papers || []).findIndex((item) => item.paper_id === paper.paper_id) + 1;
+    chatInput.value = `请解释 P${index}《${paper.title}》的贡献、方法、局限和它在调研报告中的位置。`;
+    chatInput.focus();
+    showToast("已把解释请求填入对话框，可直接发送");
+  }
+});
+
+toggleInspector?.addEventListener("click", () => {
+  document.querySelector(".inspector")?.classList.toggle("collapsed");
+  const collapsed = document.querySelector(".inspector")?.classList.contains("collapsed");
+  const use = toggleInspector.querySelector("use");
+  if (use) use.setAttribute("href", collapsed ? "#icon-panel-left" : "#icon-panel-right");
+  toggleInspector.title = collapsed ? "展开右侧详情" : "收起右侧详情";
+  toggleInspector.setAttribute("aria-label", toggleInspector.title);
 });
 
 function downloadReportIfReady() {
@@ -660,6 +941,8 @@ renderChat(null);
 renderOverview(null);
 renderSteps(null);
 updateSourcesSummary();
+updatePaperFilterButton();
+setTheme(localStorage.getItem("researchflow-theme") || "light");
 
 async function sendChatMessage(message) {
   if (!activeRun || !message.trim()) return;
