@@ -21,6 +21,7 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Flowable,
+    Image as RLImage,
     KeepTogether,
     PageBreak,
     Paragraph,
@@ -286,6 +287,25 @@ def parse_table(lines: list[str], start: int) -> tuple[Table, int]:
     return table_from_rows(rows, A4[0] - 4 * cm), i
 
 
+def image_flowable(markdown_image: str) -> Flowable | None:
+    match = re.match(r"!\[([^\]]*)\]\(([^)]+)\)", markdown_image.strip())
+    if not match:
+        return None
+    alt_text, raw_path = match.groups()
+    image_path = (SOURCE.parent / raw_path).resolve()
+    if not image_path.exists():
+        return paragraph(f"图片缺失：{raw_path}", "quote")
+
+    image = RLImage(str(image_path))
+    max_width = A4[0] - 4 * cm
+    max_height = 10.5 * cm
+    ratio = min(max_width / image.drawWidth, max_height / image.drawHeight, 1.0)
+    image.drawWidth *= ratio
+    image.drawHeight *= ratio
+    caption = paragraph(alt_text or raw_path, "small")
+    return KeepTogether([image, Spacer(1, 4), caption, Spacer(1, 8)])
+
+
 def parse_markdown(lines: list[str]) -> list[Flowable]:
     story: list[Flowable] = []
     in_code = False
@@ -319,6 +339,11 @@ def parse_markdown(lines: list[str]) -> list[Flowable]:
             continue
         if not stripped:
             story.append(Spacer(1, 4))
+            i += 1
+            continue
+        image = image_flowable(stripped)
+        if image is not None:
+            story.append(image)
             i += 1
             continue
         if stripped.startswith("|"):
