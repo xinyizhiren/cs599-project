@@ -7,6 +7,7 @@ state and report contracts.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 import json
 import re
 from datetime import datetime, timezone
@@ -193,7 +194,9 @@ DEFAULT_FROM_YEAR = 2020
 DEFAULT_LLM_BATCH_CHARS = 9000
 DEFAULT_READING_BUDGET_CHARS = 80000
 DEFAULT_MAX_FULLTEXT_PAPERS = 6
-LIVE_QUERY_PLAN_LIMIT = 6
+LIVE_QUERY_PLAN_LIMIT = 3
+LIVE_REQUEST_TIMEOUT = 8.0
+LIVE_SOURCE_TIMEOUT = 35.0
 ACADEMIC_SOURCES = {"arxiv", "semantic_scholar", "crossref", "openalex"}
 LIVE_SOURCES = ACADEMIC_SOURCES | {"web"}
 VALID_SOURCES = {"offline"} | LIVE_SOURCES | {"hybrid", "mixed"}
@@ -442,12 +445,31 @@ def balanced_merge_papers(source_groups: list[list[PaperRecord]], limit: int) ->
     return merged
 
 
+def _call_search_adapter(adapter: Any, query: str, limit: int, **kwargs: Any) -> list[PaperRecord]:
+    """Call a live adapter with timeout kwargs while keeping test fakes compatible."""
+
+    try:
+        return adapter(query, limit=limit, **kwargs)
+    except TypeError as exc:
+        if kwargs and "unexpected keyword" in str(exc):
+            reduced_kwargs = {key: value for key, value in kwargs.items() if key != "timeout"}
+            return adapter(query, limit=limit, **reduced_kwargs)
+        raise
+
+
 def _search_arxiv_queries(query_plan: list[Any], limit: int) -> tuple[list[PaperRecord], list[str]]:
     collected: list[PaperRecord] = []
     errors: list[str] = []
     for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
-            collected.extend(search_arxiv(query.query_text, limit=limit))
+            collected.extend(
+                _call_search_adapter(
+                    search_arxiv,
+                    query.query_text,
+                    limit=limit,
+                    timeout=LIVE_REQUEST_TIMEOUT,
+                )
+            )
         except ArxivSearchError as exc:
             errors.append(str(exc))
     return collected, errors
@@ -461,7 +483,14 @@ def _search_semantic_scholar_queries(
     errors: list[str] = []
     for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
-            collected.extend(search_semantic_scholar(query.query_text, limit=limit))
+            collected.extend(
+                _call_search_adapter(
+                    search_semantic_scholar,
+                    query.query_text,
+                    limit=limit,
+                    timeout=LIVE_REQUEST_TIMEOUT,
+                )
+            )
         except SemanticScholarSearchError as exc:
             errors.append(str(exc))
     return collected, errors
@@ -476,7 +505,15 @@ def _search_crossref_queries(
     errors: list[str] = []
     for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
-            collected.extend(search_crossref(query.query_text, limit=limit, from_year=from_year))
+            collected.extend(
+                _call_search_adapter(
+                    search_crossref,
+                    query.query_text,
+                    limit=limit,
+                    timeout=LIVE_REQUEST_TIMEOUT,
+                    from_year=from_year,
+                )
+            )
         except CrossrefSearchError as exc:
             errors.append(str(exc))
     return collected, errors
@@ -500,7 +537,15 @@ def _search_openalex_queries(
     errors: list[str] = []
     for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
-            collected.extend(search_openalex(query.query_text, limit=limit, from_year=from_year))
+            collected.extend(
+                _call_search_adapter(
+                    search_openalex,
+                    query.query_text,
+                    limit=limit,
+                    timeout=LIVE_REQUEST_TIMEOUT,
+                    from_year=from_year,
+                )
+            )
         except OpenAlexSearchError as exc:
             errors.append(str(exc))
     return collected, errors
@@ -511,7 +556,14 @@ def _search_tavily_queries(query_plan: list[Any], limit: int) -> tuple[list[Pape
     errors: list[str] = []
     for query in query_plan[:LIVE_QUERY_PLAN_LIMIT]:
         try:
-            collected.extend(search_tavily(query.query_text, limit=max(1, min(limit, 10))))
+            collected.extend(
+                _call_search_adapter(
+                    search_tavily,
+                    query.query_text,
+                    limit=max(1, min(limit, 10)),
+                    timeout=LIVE_REQUEST_TIMEOUT,
+                )
+            )
         except TavilySearchError as exc:
             errors.append(str(exc))
     return collected, errors
@@ -707,14 +759,40 @@ def search_selected_sources(
         source_groups.append(search_offline(topic, limit=limit))
         actual_sources.append("offline")
 
-    for source in [item for item in normalized_sources if item in LIVE_SOURCES]:
-        papers, source_errors = search_live_source(source, query_plan, limit)
-        unique = dedupe_papers(papers)
-        if unique:
-            source_groups.append(unique)
-            actual_sources.append(source)
-        else:
-            errors.extend(source_errors or [f"{source} returned no papers."])
+    live_sources = [item for item in normalized_sources if item in LIVE_SOURCES]
+    if live_sources:
+        executor = ThreadPoolExecutor(max_workers=min(len(live_sources), len(LIVE_SOURCES)))
+        futures = {
+            executor.submit(search_live_source, source, query_plan, limit): source
+            for source in live_sources
+        }
+        try:
+            for future in as_completed(futures, timeout=LIVE_SOURCE_TIMEOUT):
+                source = futures[future]
+                try:
+                    papers, source_errors = future.result()
+                except Exception as exc:  # pragma: no cover - defensive boundary.
+                    errors.append(f"{source} failed: {exc}")
+                    continue
+                unique = dedupe_papers(papers)
+                if unique:
+                    source_groups.append(unique)
+                    actual_sources.append(source)
+                else:
+                    errors.extend(source_errors or [f"{source} returned no papers."])
+        except FuturesTimeoutError:
+            pending = [source for future, source in futures.items() if not future.done()]
+            if pending:
+                errors.append(
+                    "Live search timed out for sources: "
+                    + ", ".join(sorted(pending))
+                    + f" after {LIVE_SOURCE_TIMEOUT:.0f}s."
+                )
+        finally:
+            for future in futures:
+                if not future.done():
+                    future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
 
     if source_groups:
         merged = balanced_merge_papers(source_groups, limit=limit)
