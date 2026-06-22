@@ -19,6 +19,7 @@ from .llm import LLMError, build_llm_client
 from .models import CitationCheck, ClaimRecord, EvidenceItem, PaperRecord, QueryItem, ResearchResult, SnowballRecord
 from .offline_data import OFFLINE_PAPERS
 from .planner import build_query_tree, normalize_topic, plan_queries, topic_terms
+from .publisher import publish_full_report_with_llm
 from .reading import (
     build_global_synthesis,
     build_question_synthesis,
@@ -1910,7 +1911,19 @@ def node_write_report(state: ResearchState) -> dict[str, Any]:
         )
     llm_used = bool(state.get("llm_used", False))
     llm_fallback_reason = state.get("llm_fallback_reason", "")
-    if state.get("llm_provider") == "deepseek" and state.get("report_style", "full") != "full":
+    if state.get("llm_provider") == "deepseek" and state.get("report_style", "full") == "full":
+        try:
+            report_markdown = publish_full_report_with_llm(
+                state,
+                provider="deepseek",
+            )
+            llm_used = True
+        except LLMError as exc:
+            reason = f"Report publisher fallback: {exc}"
+            llm_fallback_reason = (
+                f"{llm_fallback_reason}; {reason}" if llm_fallback_reason else reason
+            )
+    elif state.get("llm_provider") == "deepseek" and state.get("report_style", "full") != "full":
         try:
             report_markdown = polish_background_with_llm(
                 report_topic,

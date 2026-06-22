@@ -258,27 +258,27 @@
             <label class="field">
               <span>阅读深度</span>
               <select id="read-depth" name="read_depth">
-                <option value="abstract" selected>摘要级</option>
-                <option value="auto">自动全文</option>
+                <option value="abstract">摘要级</option>
+                <option value="auto" selected>自动全文</option>
                 <option value="fulltext">强制全文</option>
               </select>
             </label>
             <label class="field">
               <span>引用雪球</span>
               <select id="snowball" name="snowball">
-                <option value="none" selected>关闭</option>
+                <option value="none">关闭</option>
                 <option value="backward">参考文献</option>
                 <option value="forward">被引论文</option>
-                <option value="both">双向</option>
+                <option value="both" selected>双向</option>
               </select>
             </label>
             <label class="field">
               <span>全文篇数</span>
-              <input id="max-fulltext-papers" name="max_fulltext_papers" type="number" min="0" max="20" value="6" />
+              <input id="max-fulltext-papers" name="max_fulltext_papers" type="number" min="0" max="20" value="12" />
             </label>
             <label class="field">
               <span>阅读预算</span>
-              <input id="reading-budget-chars" name="reading_budget_chars" type="number" min="1000" max="400000" value="80000" />
+              <input id="reading-budget-chars" name="reading_budget_chars" type="number" min="1000" max="400000" value="200000" />
             </label>
             <label class="field">
               <span>补搜轮数</span>

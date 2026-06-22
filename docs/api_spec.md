@@ -130,8 +130,8 @@ Content-Type: application/json
 | SEMANTIC_SCHOLAR_API_KEY | 否 | Semantic Scholar API Key，可提高限额 |
 | TAVILY_API_KEY | 否 | Tavily Web 检索 Key；未配置时 Web 源自动跳过 |
 | OPENALEX_MAILTO | 否 | OpenAlex polite pool 邮箱标识 |
-| RESEARCHFLOW_MODEL | 否 | 默认模型名称 |
-| RESEARCHFLOW_LLM_TIMEOUT | 否 | LLM 请求超时时间，默认 30 秒 |
+| RESEARCHFLOW_MODEL | 否 | 默认模型名称，当前默认 `deepseek-v4-pro` |
+| RESEARCHFLOW_LLM_TIMEOUT | 否 | LLM 请求超时时间，默认 60 秒 |
 | RESEARCHFLOW_CACHE_DIR | 否 | 缓存目录 |
 
 规则：

@@ -17,7 +17,7 @@ from typing import Any, Protocol
 from .env import load_local_env
 
 
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEEPSEEK_CHAT_COMPLETIONS_URL = "https://api.deepseek.com/chat/completions"
 
 
@@ -54,7 +54,7 @@ class DeepSeekClient:
         if self.model is None:
             self.model = os.environ.get("RESEARCHFLOW_MODEL", DEFAULT_DEEPSEEK_MODEL)
         if self.timeout is None:
-            self.timeout = float(os.environ.get("RESEARCHFLOW_LLM_TIMEOUT", "30"))
+            self.timeout = float(os.environ.get("RESEARCHFLOW_LLM_TIMEOUT", "60"))
 
     def generate_json(self, system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:

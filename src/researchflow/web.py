@@ -189,12 +189,12 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
     report_style = str(payload.get("report_style", "full") or "full").strip()
     if report_style not in {"full", "summary", "course"}:
         report_style = "full"
-    read_depth = str(payload.get("read_depth", "abstract") or "abstract").strip()
+    read_depth = str(payload.get("read_depth", "auto") or "auto").strip()
     if read_depth not in {"abstract", "auto", "fulltext"}:
-        read_depth = "abstract"
-    snowball = str(payload.get("snowball", "none") or "none").strip()
+        read_depth = "auto"
+    snowball = str(payload.get("snowball", "both") or "both").strip()
     if snowball not in {"none", "backward", "forward", "both"}:
-        snowball = "none"
+        snowball = "both"
     summary_style = str(payload.get("summary_style", "comprehensive") or "comprehensive").strip()
     if summary_style not in {"brief", "comprehensive"}:
         summary_style = "comprehensive"
@@ -213,13 +213,13 @@ def normalize_run_request(payload: dict[str, Any]) -> dict[str, Any]:
         "read_depth": read_depth,
         "max_fulltext_papers": _safe_int(
             payload.get("max_fulltext_papers"),
-            DEFAULT_MAX_FULLTEXT_PAPERS,
+            12,
             0,
             20,
         ),
         "reading_budget_chars": _safe_int(
             payload.get("reading_budget_chars"),
-            DEFAULT_READING_BUDGET_CHARS,
+            200000,
             1000,
             400000,
         ),
@@ -264,11 +264,11 @@ def _build_initial_state(request: dict[str, Any], task_id: str, run_dir: Path) -
         "requested_source": requested_source,
         "selected_sources": selected_sources,
         "web_provider": request.get("web_provider", "tavily"),
-        "read_depth": request.get("read_depth", "abstract"),
-        "max_fulltext_papers": int(request.get("max_fulltext_papers", DEFAULT_MAX_FULLTEXT_PAPERS)),
-        "reading_budget_chars": int(request.get("reading_budget_chars", DEFAULT_READING_BUDGET_CHARS)),
+        "read_depth": request.get("read_depth", "auto"),
+        "max_fulltext_papers": int(request.get("max_fulltext_papers", 12)),
+        "reading_budget_chars": int(request.get("reading_budget_chars", 200000)),
         "reading_budget": {},
-        "snowball": request.get("snowball", "none"),
+        "snowball": request.get("snowball", "both"),
         "snowball_records": [],
         "metadata_enrichment": {},
         "full_text_chunks": [],
