@@ -285,7 +285,7 @@ ResearchFlow 的不足：
 - [x] Evaluation
 - [x] 真实联网文献调研报告样例
 - [x] 可审计调研过程记录
-- [ ] Final Report
+- [x] Final Report
 
 ## 课程交付要求跟踪
 
@@ -297,8 +297,8 @@ ResearchFlow 的不足：
 - [x] 包含 `.gitignore`
 - [x] 包含 Product / Architecture / API Spec 初稿
 - [x] 包含本地 benchmark 与评估输出能力
-- [ ] `docs/CS599_大作业报告.pdf`
-- [ ] MVP tag: `v0.1`
+- [x] `docs/CS599_大作业报告.pdf`
+- [x] MVP tag: `v0.1`
 
 ## 参考资料
 
