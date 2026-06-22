@@ -297,6 +297,7 @@ ResearchFlow 的不足：
 - [x] 包含 `.gitignore`
 - [x] 包含 Product / Architecture / API Spec 初稿
 - [x] 包含本地 benchmark 与评估输出能力
+- [x] 包含现场演示脚本 `docs/demo_script.md`
 - [x] `docs/CS599_大作业报告.pdf`
 - [x] MVP tag: `v0.1`
 
